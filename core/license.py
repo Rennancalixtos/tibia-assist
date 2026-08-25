@@ -41,7 +41,7 @@ def _protect(plaintext: str) -> str:
     if win32crypt is None:
         return plaintext
     encrypted = win32crypt.CryptProtectData(
-        plaintext.encode("utf-8"), "TibiaAssist license", None, None, None, 0
+        plaintext.encode("utf-8"), "EasyF license", None, None, None, 0
     )
     return _DPAPI_PREFIX + base64.b64encode(encrypted).decode("ascii")
 

@@ -138,7 +138,7 @@ class LicenseDialog(tk.Toplevel, _LoginForm):
         self.on_save = on_save
         self.accepted = False
 
-        self.title("Login - TibiaAssist")
+        self.title("Login - EasyF")
         self.resizable(False, False)
         self.transient(master)
         self.protocol("WM_DELETE_WINDOW", self._cancel)
@@ -162,7 +162,7 @@ class LoginWindow(tk.Tk, _LoginForm):
         self.on_save = on_save
         self.accepted = False
 
-        self.title("Login - TibiaAssist")
+        self.title("Login - EasyF")
         self.resizable(False, False)
         self.protocol("WM_DELETE_WINDOW", self._cancel)
 

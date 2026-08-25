@@ -1,4 +1,4 @@
--- Tabela de licencas/assinaturas do TibiaAssist.
+-- Tabela de licencas/assinaturas do EasyF.
 -- Cada usuario de auth.users tem no maximo uma linha aqui.
 create table if not exists public.licenses (
   id uuid primary key default gen_random_uuid(),
