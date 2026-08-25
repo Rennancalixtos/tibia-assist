@@ -18,13 +18,15 @@ from typing import Any
 def _base_dir() -> str:
     """Pasta onde o config.json e os assets do usuario devem ficar.
 
-    Rodando pelo fonte: a raiz do projeto.
-    Empacotado com PyInstaller (--onefile): a pasta do proprio .exe. NAO pode
-    ser `sys._MEIPASS`, que e um diretorio temporario apagado ao fechar o
-    programa - a configuracao e os templates calibrados sumiriam a cada uso.
+    Rodando pelo fonte: a raiz do projeto (facilita debug/dev).
+    Empacotado com PyInstaller: `%APPDATA%\\EasyF` - o padrao do Windows pra
+    dados de usuario. Nunca a pasta do .exe (pode estar em Program Files sem
+    permissao de escrita, e o auto-update sobrescreve o .exe naquele lugar)
+    nem `sys._MEIPASS` (pasta temporaria apagada ao fechar o programa).
     """
     if getattr(sys, "frozen", False):
-        return os.path.dirname(os.path.abspath(sys.executable))
+        appdata = os.environ.get("APPDATA") or os.path.expanduser("~")
+        return os.path.join(appdata, "EasyF")
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 

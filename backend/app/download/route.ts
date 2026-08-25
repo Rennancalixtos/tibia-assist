@@ -11,7 +11,9 @@ export const dynamic = "force-dynamic";
  * binario do GitHub (repo privado) usando o token guardado no servidor.
  */
 export async function GET(request: Request) {
-  const release = await fetchLatestExeRelease();
+  // preferInstaller: quem baixa por este link e sempre um usuario novo -
+  // quer o instalador com atalho, nao o .exe portatil usado pelo auto-update.
+  const release = await fetchLatestExeRelease(true);
   if (!release) {
     return NextResponse.json(
       { error: "Nenhuma versao publicada ainda. Tente novamente mais tarde." },
