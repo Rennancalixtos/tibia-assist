@@ -37,3 +37,12 @@ create trigger licenses_set_updated_at
 -- RLS habilitada e sem nenhuma policy = acesso publico (anon/authenticated)
 -- totalmente bloqueado, mesmo que a tabela seja exposta na Data API.
 alter table public.licenses enable row level security;
+
+-- RLS bloqueia por LINHA, mas o Postgres ainda exige GRANT pra role poder
+-- acessar a tabela. Com "Automatically expose new tables" desabilitado, o
+-- Supabase nao concede esses grants automaticamente - sem isso o service_role
+-- (usado pelo backend) recebe "permission denied for table licenses" mesmo
+-- ignorando RLS. So o service_role recebe privilegio aqui; anon/authenticated
+-- continuam sem nenhum acesso.
+grant usage on schema public to service_role;
+grant select, insert, update, delete on public.licenses to service_role;
