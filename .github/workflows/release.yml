@@ -36,7 +36,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
-          python -m pip install pyinstaller
+          REM pyinstaller >=6.22.1 adiciona uma validacao de seguranca no
+          REM bootloader onefile que checa o processo pai do .exe relancado -
+          REM nosso auto-update (core/updater.py) relanca via "cmd /c start"
+          REM depois de mover o arquivo, e nesse encadeamento o bootloader as
+          REM vezes nao consegue resolver o processo pai a tempo, falhando com
+          REM "Security validation failure: failed to obtain executable path
+          REM for parent process!". Fixado ate redesenhar o relancamento.
+          python -m pip install "pyinstaller<6.22.1"
 
       - name: Gera o executavel
         shell: cmd

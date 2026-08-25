@@ -83,8 +83,7 @@ class SplashScreen(tk.Tk):
         self._events.put(("downloading", update_info))
 
         def report(downloaded: int, total: int) -> None:
-            pct = int(downloaded * 100 / total) if total else None
-            self._events.put(("progress", pct))
+            self._events.put(("progress", (downloaded, total)))
 
         try:
             applied = apply_update(self.api_base_url, update_info, on_progress=report)
@@ -102,14 +101,18 @@ class SplashScreen(tk.Tk):
                 if kind == "downloading":
                     self.var_status.set(f"Baixando atualizacao {payload.get('version', '')}...")
                 elif kind == "progress":
-                    if payload is None:
-                        self.var_status.set("Baixando atualizacao...")
+                    downloaded, total = payload
+                    if not total:
+                        # Servidor nao mandou Content-Length - so da pra mostrar
+                        # os bytes baixados, sem percentual/barra determinada.
+                        self.var_status.set(f"Baixando atualizacao... {downloaded} bytes")
                     else:
-                        self.var_status.set(f"Baixando atualizacao... {payload}%")
+                        pct = int(downloaded * 100 / total)
+                        self.var_status.set(f"Baixando atualizacao... {pct}% ({downloaded}/{total})")
                         if str(self.progress["mode"]) != "determinate":
                             self.progress.stop()
                             self.progress.configure(mode="determinate", maximum=100)
-                        self.progress["value"] = payload
+                        self.progress["value"] = pct
                 elif kind == "updated":
                     self.var_status.set("Atualizacao concluida - reabrindo...")
                     self.result = "updated"
