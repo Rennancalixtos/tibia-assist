@@ -55,17 +55,22 @@ def main() -> int:
 
     config_store = Config()
     license_manager = LicenseManager(config_store.section("license"))
-    if license_manager.logged_in:
-        license_manager.refresh()
-        config_store.save()
 
-    # So uma janela por vez: login primeiro (standalone), app depois.
-    if not run_startup_login(license_manager, config_store.save):
-        return 1
+    # So uma janela por vez: login primeiro (standalone), app depois. Se o
+    # usuario clicar em "Sair da conta" dentro do app, volta pro login em vez
+    # de fechar o programa inteiro.
+    while True:
+        if license_manager.logged_in:
+            license_manager.refresh()
+            config_store.save()
 
-    app = App(config_store, license_manager)
-    app.mainloop()
-    return 0
+        if not run_startup_login(license_manager, config_store.save):
+            return 1
+
+        app = App(config_store, license_manager)
+        app.mainloop()
+        if not getattr(app, "logout_requested", False):
+            return 0
 
 
 if __name__ == "__main__":

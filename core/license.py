@@ -3,13 +3,17 @@
 Sem uma sessao com assinatura ativa, nenhuma rotina (AutoFishing/RuneMaker)
 roda - ver `App.start_worker` em gui/app.py. A sessao (access/refresh token)
 fica persistida na secao "license" do config.json (mesmo mecanismo usado
-pelas outras abas). Uma janela de tolerancia offline evita bloquear o
+pelas outras abas), criptografada em repouso com o DPAPI do Windows
+(amarrada ao usuario logado - copiar o config.json pra outra conta/maquina
+nao serve pra nada). Uma janela de tolerancia offline evita bloquear o
 usuario por uma falha de rede passageira, mas a expiracao real da
-assinatura e sempre decidida pelo backend.
+assinatura e sempre decidida pelo backend; o cache local e assinado (HMAC)
+para detectar edicao manual do arquivo.
 """
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -18,7 +22,46 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
-REQUEST_TIMEOUT = 10
+try:
+    import win32crypt  # DPAPI - so no Windows
+except ImportError:  # pragma: no cover - fora do Windows
+    win32crypt = None
+
+REQUEST_TIMEOUT = 25
+
+_DPAPI_PREFIX = "dpapi:"
+
+
+def _protect(plaintext: str) -> str:
+    """Criptografa `plaintext` com o DPAPI do Windows (amarrado ao usuario
+    logado): o config.json com o token nao serve pra nada copiado pra outra
+    conta/maquina. Sem pywin32 (fora do Windows), guarda em texto puro."""
+    if not plaintext:
+        return ""
+    if win32crypt is None:
+        return plaintext
+    encrypted = win32crypt.CryptProtectData(
+        plaintext.encode("utf-8"), "TibiaAssist license", None, None, None, 0
+    )
+    return _DPAPI_PREFIX + base64.b64encode(encrypted).decode("ascii")
+
+
+def _unprotect(value: str) -> str:
+    """Reverte `_protect`. Devolve "" se nao puder decifrar (blob de outro
+    usuario/maquina, corrompido, ou pywin32 ausente) - forca novo login em
+    vez de travar com um valor invalido."""
+    if not value:
+        return ""
+    if not value.startswith(_DPAPI_PREFIX):
+        return value  # token antigo, salvo antes desta protecao existir
+    if win32crypt is None:
+        return ""
+    try:
+        raw = base64.b64decode(value[len(_DPAPI_PREFIX) :])
+        _desc, plain = win32crypt.CryptUnprotectData(raw, None, None, None, 0)
+        return plain.decode("utf-8")
+    except Exception:
+        return ""
 
 # Segredo fixo embutido no app para assinar o cache local (status/expires_at/
 # checked_at) e detectar edicao manual do config.json. NAO e um segredo real
@@ -42,6 +85,19 @@ def _sign_cache(refresh_token: str, status: str, expires_at: str | None, checked
         [str(refresh_token), str(status), str(expires_at), f"{float(checked_at):.6f}"]
     )
     return hmac.new(_CACHE_SECRET, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _decode_jwt_claims(token: str) -> dict:
+    """Decodifica o payload de um JWT sem verificar assinatura - usado so
+    para exibir informacao (email) que ja veio autenticada pelo backend."""
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return {}
+        padded = parts[1] + "=" * (-len(parts[1]) % 4)
+        return json.loads(base64.urlsafe_b64decode(padded))
+    except Exception:
+        return {}
 
 
 class LicenseManager:
@@ -71,6 +127,37 @@ class LicenseManager:
     @property
     def logged_in(self) -> bool:
         return bool(self.section.get("refresh_token"))
+
+    def _plain(self, key: str) -> str:
+        """Le `key` (access_token/refresh_token) decifrado com o DPAPI."""
+        return _unprotect(self.section.get(key, ""))
+
+    @property
+    def email(self) -> str:
+        """Email do usuario logado, extraido do access_token (JWT)."""
+        token = self._plain("access_token")
+        if not token:
+            return ""
+        return str(_decode_jwt_claims(token).get("email") or "")
+
+    @property
+    def expires_label(self) -> str:
+        """Tempo restante da assinatura, formatado pra exibicao na GUI."""
+        expires = _parse_iso(self.section.get("expires_at"))
+        if expires is None:
+            return "-"
+        delta = expires - datetime.now(timezone.utc)
+        total_seconds = delta.total_seconds()
+        if total_seconds <= 0:
+            return "expirada"
+        days = int(total_seconds // 86400)
+        hours = int((total_seconds % 86400) // 3600)
+        if days > 0:
+            return f"{days}d {hours}h"
+        minutes = int((total_seconds % 3600) // 60)
+        if hours > 0:
+            return f"{hours}h {minutes}min"
+        return f"{minutes}min"
 
     # --------------------------------------------------------------- estado
     def _current_cache_sig(self) -> str:
@@ -121,8 +208,8 @@ class LicenseManager:
             self.message = "Nao foi possivel confirmar a assinatura online. Conecte-se a internet."
 
     def _apply_session(self, body: dict) -> None:
-        self.section["access_token"] = body.get("access_token", "")
-        self.section["refresh_token"] = body.get("refresh_token", "")
+        self.section["access_token"] = _protect(body.get("access_token", ""))
+        self.section["refresh_token"] = _protect(body.get("refresh_token", ""))
         self.section["access_token_expires_at"] = body.get("expires_at")
         license_info = body.get("license") or {}
         self.section["status"] = license_info.get("status", "unknown")
@@ -195,7 +282,7 @@ class LicenseManager:
 
     def refresh(self) -> bool:
         """Renova a sessao e revalida a assinatura; sem rede, cai no cache."""
-        refresh_token = self.section.get("refresh_token")
+        refresh_token = self._plain("refresh_token")
         if not refresh_token:
             self.valid = False
             self.message = "Faca login para ativar o programa."
@@ -229,7 +316,7 @@ class LicenseManager:
 
     def start_checkout(self) -> str | None:
         """Pede ao backend uma URL de checkout do Stripe pra assinatura atual."""
-        access_token = self.section.get("access_token")
+        access_token = self._plain("access_token")
         if not access_token:
             self.message = "Faca login antes de assinar."
             return None
