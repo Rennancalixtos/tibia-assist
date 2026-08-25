@@ -1,4 +1,4 @@
-"""TibiaAssist - ponto de entrada.
+"""EasyF - ponto de entrada.
 
 Uso:
     python main.py
@@ -41,7 +41,7 @@ def main() -> int:
         )
         print(message, file=sys.stderr)
         try:
-            messagebox.showerror("TibiaAssist", message)
+            messagebox.showerror("EasyF", message)
         except Exception:
             pass
         return 1

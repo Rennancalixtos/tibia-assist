@@ -1,4 +1,4 @@
-# TibiaAssist
+# EasyF
 
 Automação de duas tarefas repetitivas do Tibia (OTClient/OTC e similares) feita
 **100% por pixels da tela + simulação de mouse e teclado**.
@@ -185,7 +185,7 @@ drena no loop do tkinter.
 
 ## Gerando o executável (Windows)
 
-O PyInstaller **não faz cross-compile**: o `TibiaAssist.exe` precisa ser gerado
+O PyInstaller **não faz cross-compile**: o `EasyF.exe` precisa ser gerado
 em uma máquina Windows (com o Python 3.11+ instalado). Copie o projeto para lá e
 rode, na pasta do projeto:
 
@@ -195,7 +195,7 @@ build.bat debug      :: build com console - use no primeiro teste
 ```
 
 O script cria o `.venv`, instala as dependências e o PyInstaller, e gera
-`dist\TibiaAssist.exe`. Recomendo o **primeiro build em modo `debug`**: se
+`dist\EasyF.exe`. Recomendo o **primeiro build em modo `debug`**: se
 faltar alguma dependência ou algo falhar ao abrir a janela, o traceback aparece
 no console em vez de o programa fechar em silêncio.
 
@@ -226,7 +226,7 @@ onde seu usuário tenha permissão de escrita (evite `C:\Program Files`).
 |---|---|
 | "Nenhuma tile de água encontrada" | Recalibre a cor com um recorte só de água; reduza `Área mínima`; confira se a região selecionada é a certa |
 | Detecta grama/parede como água | Aumente `Área mínima`, recalibre com um recorte mais puro ou use o modo template |
-| Mouse se move certinho mas o clique não tem efeito | O cliente do jogo provavelmente roda como Administrador. Execute o TibiaAssist (ou o `.exe`) também como Administrador — Windows bloqueia silenciosamente input sintético de um processo de privilégio mais baixo chegando numa janela elevada (UIPI) |
+| Mouse se move certinho mas o clique não tem efeito | O cliente do jogo provavelmente roda como Administrador. Execute o EasyF (ou o `.exe`) também como Administrador — Windows bloqueia silenciosamente input sintético de um processo de privilégio mais baixo chegando numa janela elevada (UIPI) |
 | Cliques não têm efeito no jogo (mesmo nível de privilégio) | O cliente pode ignorar input sintético em modo tela cheia — tente janela/janela sem borda |
 | Template para de funcionar | Zoom ou resolução mudaram; capture o template de novo |
 | OCR lê valor errado ou nada | Selecione um retângulo mais justo, só com o número; confira o caminho do Tesseract em *Testar OCR* |

@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM  TibiaAssist - build do executavel (rodar NO WINDOWS)
+REM  EasyF - build do executavel (rodar NO WINDOWS)
 REM
 REM    build.bat          -> build normal (sem console)
 REM    build.bat debug    -> build com console, mostra tracebacks
@@ -23,18 +23,18 @@ echo [2/4] Instalando dependencias...
 
 if /i "%~1"=="debug" (
     echo [3/4] Modo DEBUG: o executavel abrira com janela de console.
-    set TIBIAASSIST_CONSOLE=1
+    set EASYF_CONSOLE=1
 ) else (
     echo [3/4] Modo normal: executavel sem console.
-    set TIBIAASSIST_CONSOLE=
+    set EASYF_CONSOLE=
 )
 
 echo [4/4] Gerando o executavel...
-".venv\Scripts\python.exe" -m PyInstaller TibiaAssist.spec --noconfirm --clean || goto :erro
+".venv\Scripts\python.exe" -m PyInstaller EasyF.spec --noconfirm --clean || goto :erro
 
 echo.
 echo ============================================================
-echo  Pronto: dist\TibiaAssist.exe
+echo  Pronto: dist\EasyF.exe
 echo.
 echo  Antes de empacotar para outra maquina, lembre-se de que o
 echo  Tesseract OCR e um programa separado e precisa estar

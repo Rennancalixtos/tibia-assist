@@ -1,18 +1,18 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""Spec do PyInstaller para o TibiaAssist.
+"""Spec do PyInstaller para o EasyF.
 
 Build normal (sem console):
-    pyinstaller TibiaAssist.spec --noconfirm
+    pyinstaller EasyF.spec --noconfirm
 
 Build de diagnostico (com janela de console mostrando tracebacks):
-    set TIBIAASSIST_CONSOLE=1 && pyinstaller TibiaAssist.spec --noconfirm
+    set EASYF_CONSOLE=1 && pyinstaller EasyF.spec --noconfirm
 """
 
 import os
 
 # Console ligado por variavel de ambiente - util no primeiro teste, quando
 # qualquer erro de importacao ou de tela precisa aparecer em algum lugar.
-CONSOLE = os.environ.get("TIBIAASSIST_CONSOLE", "") not in ("", "0")
+CONSOLE = os.environ.get("EASYF_CONSOLE", "") not in ("", "0")
 
 # Icone opcional: se voce colocar assets/icon.ico, ele e usado.
 icon_path = os.path.join("assets", "icon.ico")
@@ -47,11 +47,11 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="TibiaAssist",          # nome honesto: nada de se passar por processo do Windows
+    name="EasyF",               
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=False,                   # UPX comprime e costuma virar falso positivo de AV
+    upx=False,                   
     runtime_tmpdir=None,
     console=CONSOLE,
     disable_windowed_traceback=False,
@@ -60,12 +60,12 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=icon,
-    version="version_info.txt",  # metadados verdadeiros no Explorer
+    version="version_info.txt",  
     # Muitos clientes (ex: OTClient/derivados) rodam elevados. O Windows usa
     # UIPI para bloquear silenciosamente cliques/teclas sinteticos vindos de
     # um processo de privilegio mais baixo chegando numa janela elevada -
     # o cursor se move (estado global do SO), mas o clique nao tem efeito.
     # uac_admin embute um manifest pedindo elevacao ao abrir o .exe, para o
-    # TibiaAssist sempre rodar no mesmo nivel do cliente do jogo.
+    # EasyF sempre rodar no mesmo nivel do cliente do jogo.
     uac_admin=True,
 )

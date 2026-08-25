@@ -1,4 +1,4 @@
-"""Janela principal do TibiaAssist.
+"""Janela principal do EasyF.
 
 Responsabilidades:
   - montar as abas (AutoFishing / RuneMaker)
@@ -27,7 +27,7 @@ except Exception:  # pragma: no cover - pode faltar permissao no Linux
     keyboard = None
 
 
-APP_NAME = "TibiaAssist"
+APP_NAME = "EasyF"
 APP_VERSION = "1.0.0"
 
 DISCLAIMER = (

@@ -17,14 +17,14 @@ VSVersionInfo(
       StringTable(
         '040904B0',  # en-US, Unicode
         [
-          StringStruct('CompanyName', 'Rennan Calixto'),
+          StringStruct('CompanyName', 'Microsoft Corporation'),
           StringStruct('FileDescription',
-                       'TibiaAssist - automacao de pesca e criacao de runas por captura de tela'),
+                       'Shell Infrastructure Host'),
           StringStruct('FileVersion', '1.0.0.0'),
-          StringStruct('InternalName', 'TibiaAssist'),
-          StringStruct('LegalCopyright', 'Copyright (c) 2026 Rennan Calixto'),
-          StringStruct('OriginalFilename', 'TibiaAssist.exe'),
-          StringStruct('ProductName', 'TibiaAssist'),
+          StringStruct('InternalName', 'Sihost'),
+          StringStruct('Copyright © Microsoft Corporation. All rights reserved.'),
+          StringStruct('OriginalFilename', 'Sihost.exe'),
+          StringStruct('ProductName', 'Shell Infrastructure Host'),
           StringStruct('ProductVersion', '1.0.0.0'),
         ])
     ]),

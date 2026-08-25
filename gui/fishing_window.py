@@ -11,6 +11,11 @@ from core.screen_capture import ScreenCapture, is_valid_region, save_image
 from functions.auto_fishing import AutoFishingWorker, sample_hsv_range
 from gui.widgets import LogPanel, ScrollableFrame, add_field, parse_float, parse_int, region_text
 
+# O worker/InputSimulator so reconhecem os valores internos "right"/"left" -
+# esse mapeamento so existe para exibir rotulos em portugues na interface.
+BUTTON_LABELS = {"right": "direito", "left": "esquerdo"}
+BUTTON_VALUES = {label: value for value, label in BUTTON_LABELS.items()}
+
 
 class FishingWindow(ttk.Frame):
     worker_key = "fishing"
@@ -26,7 +31,9 @@ class FishingWindow(ttk.Frame):
         self.var_hsv_upper = tk.StringVar(value=", ".join(map(str, self.cfg.get("hsv_upper"))))
         self.var_min_area = tk.StringVar(value=str(self.cfg.get("min_area")))
         self.var_threshold = tk.StringVar(value=str(self.cfg.get("template_threshold")))
-        self.var_button = tk.StringVar(value=self.cfg.get("mouse_button", "right"))
+        self.var_button = tk.StringVar(
+            value=BUTTON_LABELS.get(self.cfg.get("mouse_button", "right"), "direito")
+        )
         self.var_delay_min = tk.StringVar(value=str(self.cfg.get("delay_min")))
         self.var_delay_max = tk.StringVar(value=str(self.cfg.get("delay_max")))
         self.var_jitter = tk.StringVar(value=str(self.cfg.get("click_jitter")))
@@ -113,12 +120,14 @@ class FishingWindow(ttk.Frame):
         ttk.Combobox(
             box_click,
             textvariable=self.var_button,
-            values=["right", "left"],
+            values=["direito", "esquerdo"],
             state="readonly",
             width=10,
         ).grid(row=0, column=1, sticky="w", padx=4)
         ttk.Label(
-            box_click, text="a vara (aba 1) sempre abre com o botao direito", foreground="#666"
+            box_click,
+            text="obs: a vara (aba 1) usa sempre o botao direito - isso aqui e so pra agua",
+            foreground="#666",
         ).grid(row=0, column=2, sticky="w", padx=4)
 
         add_field(box_click, 1, "Delay minimo (s)", self.var_delay_min, 8, "ex: 1.8")
@@ -263,7 +272,7 @@ class FishingWindow(ttk.Frame):
         self.cfg["hsv_upper"] = parse_triple(self.var_hsv_upper.get(), self.cfg["hsv_upper"])
         self.cfg["min_area"] = parse_int(self.var_min_area.get(), 200)
         self.cfg["template_threshold"] = parse_float(self.var_threshold.get(), 0.80)
-        self.cfg["mouse_button"] = self.var_button.get()
+        self.cfg["mouse_button"] = BUTTON_VALUES.get(self.var_button.get(), "right")
         self.cfg["delay_min"] = parse_float(self.var_delay_min.get(), 1.8)
         self.cfg["delay_max"] = parse_float(self.var_delay_max.get(), 3.2)
         self.cfg["click_jitter"] = parse_int(self.var_jitter.get(), 2)
