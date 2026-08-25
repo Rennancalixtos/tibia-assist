@@ -35,8 +35,8 @@ ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 DEFAULTS: dict[str, Any] = {
     # Licenca/assinatura - sem uma key valida nenhuma rotina roda.
     "license": {
-        # URL base do backend (Vercel) que valida a key. Preencher apos o deploy.
-        "api_base_url": "",
+        # URL base do backend (Vercel) que valida a licenca/checa update.
+        "api_base_url": "https://tibia-assist.vercel.app",
         # Tolerancia offline: aceita a ultima validacao "active" por N horas
         # sem internet antes de bloquear as rotinas.
         "grace_period_hours": 12,
