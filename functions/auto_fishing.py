@@ -203,7 +203,10 @@ class AutoFishingWorker(BaseWorker):
 
     def setup(self) -> None:
         self.capture = ScreenCapture()
-        self.mouse = InputSimulator()
+        self.mouse = InputSimulator(
+            background_hwnd=self.config.get("_background_hwnd"),
+            on_fallback=self.log,
+        )
         self.region = self.config.get("region")
         self.mode = self.config.get("detection_mode", "hsv")
         self.template = None

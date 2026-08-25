@@ -17,6 +17,13 @@ import time
 import pyautogui
 import pytweening
 
+from core import background_input
+
+try:  # pragma: no cover - so existe no Windows, mas o resto do modulo roda sem
+    import win32gui
+except Exception:
+    win32gui = None
+
 # Desliga o fail-safe de canto de tela? NAO. Mantemos ligado de proposito:
 # mover o mouse para o canto superior esquerdo aborta o script - e a valvula
 # de escape mais confiavel que o usuario tem.
@@ -42,8 +49,26 @@ class InputSimulator:
     qualquer sistema de deteccao.
     """
 
-    def __init__(self, prefer_directinput: bool = True):
+    def __init__(self, prefer_directinput: bool = True, background_hwnd=None, on_fallback=None):
         self.use_directinput = bool(prefer_directinput and _HAS_DIRECTINPUT)
+        self.background_hwnd = background_hwnd
+        self.on_fallback = on_fallback
+        # Uma vez que o modo background falha, esta instancia nunca mais tenta
+        # de novo - evita martelar PostMessage numa janela morta a cada clique.
+        self._background_disabled = False
+
+    def _background_failed(self, exc: Exception) -> None:
+        self._background_disabled = True
+        if self.on_fallback:
+            self.on_fallback(f"Modo background falhou ({exc}) - revertendo para modo padrao (mouse real).")
+
+    def _background_ready(self) -> bool:
+        if not self.background_hwnd or self._background_disabled:
+            return False
+        if win32gui is None:
+            self._background_failed(RuntimeError("pywin32 indisponivel"))
+            return False
+        return True
 
     # ------------------------------------------------------------------ mouse
     @property
@@ -107,10 +132,21 @@ class InputSimulator:
         `moveTo` absoluto com bug de monitor (ver `move_to`) bem em cima da
         posicao certa que `move_to` acabou de garantir.
         """
+        button = "right" if button == "right" else "left"
+
+        if self._background_ready():
+            try:
+                if not win32gui.IsWindow(self.background_hwnd):
+                    raise RuntimeError("janela do jogo nao encontrada")
+                background_input.post_click(self.background_hwnd, x, y, button)
+                return int(x), int(y)
+            except Exception as exc:
+                self._background_failed(exc)
+                # cai pro codigo de mouse real abaixo, sem re-lancar
+
         tx, ty = self.move_to(x, y, jitter)
         # Pequena pausa entre mover e clicar, como um humano faria.
         time.sleep(random.uniform(0.03, 0.12))
-        button = "right" if button == "right" else "left"
         try:
             self._backend.mouseDown(button=button)
             time.sleep(random.uniform(0.05, 0.15))
@@ -145,6 +181,16 @@ class InputSimulator:
         meio do arrasto (ex: fail-safe de canto de tela), o botao nao pode
         ficar fisicamente preso pelo resto da sessao.
         """
+        if self._background_ready():
+            try:
+                if not win32gui.IsWindow(self.background_hwnd):
+                    raise RuntimeError("janela do jogo nao encontrada")
+                background_input.post_drag(self.background_hwnd, from_x, from_y, to_x, to_y)
+                return int(to_x), int(to_y)
+            except Exception as exc:
+                self._background_failed(exc)
+                # cai pro codigo de mouse real abaixo, sem re-lancar
+
         self.move_to(from_x, from_y, from_jitter)
         time.sleep(random.uniform(0.05, 0.15))
         self._backend.mouseDown(button="left")
@@ -162,6 +208,17 @@ class InputSimulator:
         key = (key or "").strip().lower()
         if not key:
             return
+
+        if self._background_ready():
+            try:
+                if not win32gui.IsWindow(self.background_hwnd):
+                    raise RuntimeError("janela do jogo nao encontrada")
+                background_input.post_key(self.background_hwnd, key)
+                return
+            except Exception as exc:
+                self._background_failed(exc)
+                # cai pro codigo de teclado real abaixo, sem re-lancar
+
         time.sleep(random.uniform(0.02, 0.08))  # "tempo de reacao" antes de apertar
         try:
             self._backend.keyDown(key)

@@ -115,7 +115,10 @@ class RuneMakerWorker(BaseWorker):
 
     def setup(self) -> None:
         self.capture = ScreenCapture()
-        self.mouse = InputSimulator()
+        self.mouse = InputSimulator(
+            background_hwnd=self.config.get("_background_hwnd"),
+            on_fallback=self.log,
+        )
         self.coordinator = self.config.get("_coordinator")
         self._pause_failures = 0
         self._cycle_failures = 0

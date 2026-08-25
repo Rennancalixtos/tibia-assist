@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAuth } from "@/lib/supabase";
-import { getLicenseForUser } from "@/lib/license";
+import { getLicenseForUser, issueSessionToken } from "@/lib/license";
 
 function sessionExpiresAtIso(expiresAt: number | undefined, expiresIn: number | undefined): string {
   if (typeof expiresAt === "number") {
@@ -35,11 +35,16 @@ export async function POST(request: Request) {
 
   const { session } = data;
   const license = await getLicenseForUser(session.user.id);
+  // null quando a conta ainda nao tem nenhuma linha em `licenses` (nunca
+  // fez checkout) - a conta so passa a ter sessao unica fiscalizada depois
+  // do primeiro checkout/ativacao.
+  const sessionToken = await issueSessionToken(session.user.id);
 
   return NextResponse.json({
     access_token: session.access_token,
     refresh_token: session.refresh_token,
     expires_at: sessionExpiresAtIso(session.expires_at, session.expires_in),
     license,
+    ...(sessionToken ? { session_token: sessionToken } : {}),
   });
 }

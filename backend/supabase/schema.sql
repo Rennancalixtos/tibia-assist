@@ -7,9 +7,18 @@ create table if not exists public.licenses (
   stripe_subscription_id text,
   status text not null default 'incomplete',
   current_period_end timestamptz,
+  -- Sessao unica por conta: token opaco gerado a cada login, comparado pelo
+  -- heartbeat periodico do cliente. NULL = nenhuma sessao ativa fiscalizada
+  -- ainda (conta nunca logou depois desta feature existir).
+  session_token text,
+  session_heartbeat_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Para quem ja tinha a tabela criada antes desta feature existir:
+--   alter table public.licenses add column if not exists session_token text;
+--   alter table public.licenses add column if not exists session_heartbeat_at timestamptz;
 
 create index if not exists licenses_stripe_subscription_id_idx
   on public.licenses (stripe_subscription_id);
