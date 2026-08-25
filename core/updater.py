@@ -60,6 +60,38 @@ def check_for_update(api_base_url: str, current_version: str) -> dict | None:
     return info
 
 
+def _looks_like_valid_exe(path: str, expected_size: int) -> bool:
+    """Checagem minima de integridade antes de confiar no arquivo baixado.
+
+    Sem isso, um download truncado (rede instavel) OU um antivirus que
+    mexeu no arquivo enquanto ele ainda estava sendo escrito (confirmado na
+    pratica: o Windows Defender interceptou o `_update_*.exe` pra analise
+    automatica no meio do download, com o hash do arquivo mudando entre
+    duas leituras dele) acaba sendo trocado no lugar do .exe em uso -
+    quebrando o proximo boot com "Failed to load Python DLL" (o bootloader
+    do PyInstaller nao consegue extrair um onefile corrompido).
+
+    Duas checagens bem baratas, sem tentar validar a assinatura/conteudo
+    inteiro: o tamanho baixado bate com o Content-Length (quando o servidor
+    informou um) e o arquivo comeca com o cabecalho "MZ" de um executavel
+    PE de verdade.
+    """
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return False
+    if expected_size and size != expected_size:
+        return False
+    if size < 2:
+        return False
+    try:
+        with open(path, "rb") as fp:
+            header = fp.read(2)
+    except OSError:
+        return False
+    return header == b"MZ"
+
+
 def apply_update(api_base_url: str, update_info: dict, on_progress=None) -> bool:
     """Baixa o novo .exe e reinicia o programa com ele no lugar do atual.
 
@@ -99,6 +131,13 @@ def apply_update(api_base_url: str, update_info: dict, on_progress=None) -> bool
                 if on_progress:
                     on_progress(downloaded, total)
     except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        try:
+            os.remove(new_exe)
+        except OSError:
+            pass
+        return False
+
+    if not _looks_like_valid_exe(new_exe, expected_size=total):
         try:
             os.remove(new_exe)
         except OSError:
