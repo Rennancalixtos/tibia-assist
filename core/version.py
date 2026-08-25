@@ -8,4 +8,4 @@ autodeclarando na versao antiga e fica tentando (e "conseguindo") baixar a
 "mesma" atualizacao pra sempre.
 """
 
-APP_VERSION = "1.1.2"
+APP_VERSION = "1.1.3"
