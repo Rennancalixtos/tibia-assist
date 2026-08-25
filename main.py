@@ -46,12 +46,24 @@ def main() -> int:
             pass
         return 1
 
+    from core.config import Config
+    from core.license import LicenseManager
     from gui.app import App
+    from gui.license_dialog import run_startup_login
 
-    app = App()
-    if not getattr(app, "license_ok", True):
-        app.destroy()
+    # TODO: checar atualizacao (GitHub Releases) aqui, antes do login.
+
+    config_store = Config()
+    license_manager = LicenseManager(config_store.section("license"))
+    if license_manager.logged_in:
+        license_manager.refresh()
+        config_store.save()
+
+    # So uma janela por vez: login primeiro (standalone), app depois.
+    if not run_startup_login(license_manager, config_store.save):
         return 1
+
+    app = App(config_store, license_manager)
     app.mainloop()
     return 0
 

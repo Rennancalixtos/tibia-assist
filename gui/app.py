@@ -39,17 +39,21 @@ DISCLAIMER = (
 
 
 class App(tk.Tk):
-    def __init__(self) -> None:
+    def __init__(self, config_store: Config, license_manager: LicenseManager) -> None:
+        """`config_store` e `license_manager` vem prontos de main.py - o
+        login (janela standalone, ver gui/license_dialog.py) roda ANTES
+        desta janela ser criada, garantindo que so uma janela apareca por
+        vez (login primeiro, app depois)."""
         super().__init__()
         self.title(f"{APP_NAME} {APP_VERSION}")
         self.geometry("760x760")
         self.minsize(700, 640)
 
-        self.config_store = Config()
+        self.config_store = config_store
         self.events: "queue.Queue[tuple]" = queue.Queue()
         self.workers: dict[str, object] = {}
         self._hotkey_handles: list = []
-        self.license = LicenseManager(self.config_store.section("license"))
+        self.license = license_manager
 
         self._build()
         self._register_hotkeys()
@@ -57,9 +61,7 @@ class App(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.after(100, self._pump_events)
 
-        self.license_ok = self._ensure_license_startup()
-        if self.license_ok:
-            self._schedule_license_check()
+        self._schedule_license_check()
 
     # ---------------------------------------------------------------- layout
     def _build(self) -> None:
@@ -182,27 +184,6 @@ class App(tk.Tk):
     # --------------------------------------------------------------- licenca
     def _save_license(self) -> None:
         self.config_store.save()
-
-    def _ensure_license_startup(self) -> bool:
-        """Roda no boot: revalida a key salva e, se preciso, pede uma nova.
-
-        Some a janela principal enquanto o dialogo de licenca esta aberto -
-        nenhuma rotina deve rodar (nem a janela ser usada) sem licenca ativa.
-        """
-        if self.license.logged_in:
-            self.license.refresh()
-            self.config_store.save()
-        if self.license.valid:
-            return True
-
-        self.withdraw()
-        ok = False
-        try:
-            ok = ensure_license(self, self.license, self._save_license)
-        finally:
-            if ok:
-                self.deiconify()
-        return ok
 
     def _schedule_license_check(self) -> None:
         interval_min = float(self.config_store.get("license.check_interval_minutes", 30) or 30)
