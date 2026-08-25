@@ -20,6 +20,8 @@ from tkinter import messagebox, ttk
 from core import region_selector
 from core.config import Config
 from core.input_simulator import InputSimulator
+from core.license import LicenseManager
+from gui.license_dialog import ensure_license
 
 try:
     import keyboard  # hotkeys globais (funciona com a janela do jogo em foco)
@@ -47,12 +49,17 @@ class App(tk.Tk):
         self.events: "queue.Queue[tuple]" = queue.Queue()
         self.workers: dict[str, object] = {}
         self._hotkey_handles: list = []
+        self.license = LicenseManager(self.config_store.section("license"))
 
         self._build()
         self._register_hotkeys()
 
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.after(100, self._pump_events)
+
+        self.license_ok = self._ensure_license_startup()
+        if self.license_ok:
+            self._schedule_license_check()
 
     # ---------------------------------------------------------------- layout
     def _build(self) -> None:
@@ -172,8 +179,53 @@ class App(tk.Tk):
             self.lift()
         return point
 
+    # --------------------------------------------------------------- licenca
+    def _save_license(self) -> None:
+        self.config_store.save()
+
+    def _ensure_license_startup(self) -> bool:
+        """Roda no boot: revalida a key salva e, se preciso, pede uma nova.
+
+        Some a janela principal enquanto o dialogo de licenca esta aberto -
+        nenhuma rotina deve rodar (nem a janela ser usada) sem licenca ativa.
+        """
+        if self.license.logged_in:
+            self.license.refresh()
+            self.config_store.save()
+        if self.license.valid:
+            return True
+
+        self.withdraw()
+        ok = False
+        try:
+            ok = ensure_license(self, self.license, self._save_license)
+        finally:
+            if ok:
+                self.deiconify()
+        return ok
+
+    def _schedule_license_check(self) -> None:
+        interval_min = float(self.config_store.get("license.check_interval_minutes", 30) or 30)
+        self.after(max(60_000, int(interval_min * 60_000)), self._periodic_license_check)
+
+    def _periodic_license_check(self) -> None:
+        was_valid = self.license.valid
+        self.license.refresh()
+        self.config_store.save()
+        if was_valid and not self.license.valid:
+            self.stop_all()
+            messagebox.showwarning(
+                APP_NAME,
+                f"Licenca invalida: {self.license.message}\nTodas as rotinas foram paradas.",
+            )
+        self._schedule_license_check()
+
     # ---------------------------------------------------------------- workers
     def start_worker(self, key: str, worker_class, cfg: dict) -> None:
+        if not ensure_license(self, self.license, self._save_license):
+            messagebox.showwarning(APP_NAME, "E necessaria uma licenca ativa para iniciar.")
+            return
+
         existing = self.workers.get(key)
         if existing is not None and existing.is_alive():
             messagebox.showinfo(APP_NAME, "Esta rotina ja esta em execucao.")

@@ -6,9 +6,17 @@ import os
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+import cv2
+
 from core.config import ASSETS_DIR
-from core.screen_capture import ScreenCapture, is_valid_region, save_image
-from functions.auto_fishing import AutoFishingWorker, sample_hsv_range
+from core.screen_capture import ScreenCapture, is_valid_region, load_image, save_image
+from functions.auto_fishing import (
+    AutoFishingWorker,
+    draw_tile_grid,
+    find_water_template,
+    find_water_tiles_hsv,
+    sample_hsv_range,
+)
 from gui.widgets import LogPanel, ScrollableFrame, add_field, parse_float, parse_int, region_text
 
 # O worker/InputSimulator so reconhecem os valores internos "right"/"left" -
@@ -30,6 +38,10 @@ class FishingWindow(ttk.Frame):
         self.var_hsv_lower = tk.StringVar(value=", ".join(map(str, self.cfg.get("hsv_lower"))))
         self.var_hsv_upper = tk.StringVar(value=", ".join(map(str, self.cfg.get("hsv_upper"))))
         self.var_min_area = tk.StringVar(value=str(self.cfg.get("min_area")))
+        self.var_tile_size = tk.StringVar(value=str(self.cfg.get("tile_size", 32)))
+        self.var_tile_coverage = tk.StringVar(
+            value=str(int(self.cfg.get("min_tile_coverage", 0.35) * 100))
+        )
         self.var_threshold = tk.StringVar(value=str(self.cfg.get("template_threshold")))
         self.var_button = tk.StringVar(
             value=BUTTON_LABELS.get(self.cfg.get("mouse_button", "right"), "direito")
@@ -97,11 +109,17 @@ class FishingWindow(ttk.Frame):
 
         add_field(box_detect, 1, "HSV minimo", self.var_hsv_lower, 16, "H, S, V")
         add_field(box_detect, 2, "HSV maximo", self.var_hsv_upper, 16, "H, S, V")
-        add_field(box_detect, 3, "Area minima", self.var_min_area, 8, "px do blob de agua")
+        add_field(box_detect, 3, "Area minima", self.var_min_area, 8, "px de agua na regiao")
         add_field(box_detect, 4, "Threshold template", self.var_threshold, 8, "0.0 a 1.0")
+        add_field(
+            box_detect, 5, "Tamanho do SQM (px)", self.var_tile_size, 8, "32 = tile padrao sem zoom"
+        )
+        add_field(
+            box_detect, 6, "Cobertura minima do SQM (%)", self.var_tile_coverage, 8, "0 a 100"
+        )
 
         actions = ttk.Frame(box_detect)
-        actions.grid(row=5, column=0, columnspan=3, sticky="w", pady=(6, 6))
+        actions.grid(row=7, column=0, columnspan=3, sticky="w", pady=(6, 6))
         ttk.Button(actions, text="Calibrar cor da agua...", command=self.calibrate_color).pack(
             side="left", padx=4
         )
@@ -109,6 +127,9 @@ class FishingWindow(ttk.Frame):
             side="left", padx=4
         )
         ttk.Button(actions, text="Testar deteccao", command=self.test_detection).pack(
+            side="left", padx=4
+        )
+        ttk.Button(actions, text="Visualizar grid (SQM)...", command=self.preview_grid).pack(
             side="left", padx=4
         )
 
@@ -230,27 +251,69 @@ class FishingWindow(ttk.Frame):
         self.save_config()
         self.log(f"Template salvo em {path} ({region[2]}x{region[3]} px)")
 
+    def _run_detection(self) -> tuple:
+        """Captura a regiao e roda a deteccao configurada, sem depender do
+        resto do worker (posicao da vara, etc.) - o teste e so sobre a agua.
+
+        Devolve (frame, targets). Lanca ValueError se a regiao/template nao
+        estiverem prontos.
+        """
+        cfg = self.worker_config()
+        if not is_valid_region(cfg.get("region")):
+            raise ValueError("Selecione a regiao monitorada primeiro.")
+
+        with ScreenCapture() as cap:
+            frame = cap.grab(cfg["region"])
+
+        if cfg.get("detection_mode") == "template":
+            template = load_image(cfg["template_path"])
+            if template is None:
+                raise ValueError(
+                    "Template de agua nao encontrado. Calibre um template ou use o modo HSV."
+                )
+            targets = find_water_template(frame, template, cfg.get("template_threshold", 0.80))
+        else:
+            targets = find_water_tiles_hsv(
+                frame,
+                cfg.get("hsv_lower", [90, 60, 40]),
+                cfg.get("hsv_upper", [130, 255, 255]),
+                int(cfg.get("min_area", 200)),
+                int(cfg.get("tile_size", 32)),
+                float(cfg.get("min_tile_coverage", 0.35)),
+            )
+        return frame, targets
+
     def test_detection(self) -> None:
         """Roda a deteccao uma unica vez e informa quantas tiles foram achadas."""
         self.save_config()
-        cfg = self.worker_config()
-        if not is_valid_region(cfg.get("region")):
-            messagebox.showwarning("AutoFishing", "Selecione a regiao monitorada primeiro.")
-            return
         try:
-            worker = AutoFishingWorker(cfg, self.app.events)
-            worker.setup()
-            with ScreenCapture() as cap:
-                frame = cap.grab(cfg["region"])
-            targets = worker.detect(frame)
-            worker.teardown()
+            _frame, targets = self._run_detection()
         except Exception as exc:
             messagebox.showerror("AutoFishing", f"Falha no teste: {exc}")
             return
-        self.log(f"Teste de deteccao: {len(targets)} tile(s) de agua encontrada(s).")
+
+        message = f"Teste de deteccao: {len(targets)} SQM(s) de agua encontrado(s)."
         if targets:
             cx, cy, score = targets[0]
-            self.log(f"Melhor candidato (relativo a regiao): x={cx} y={cy} score/area={score}")
+            message += f"\nMelhor candidato (relativo a regiao): x={cx} y={cy} score/cobertura={score}"
+        self.log(message)
+        messagebox.showinfo("AutoFishing", message)
+
+    def preview_grid(self) -> None:
+        """Mostra o grid de SQM sobre a regiao, com os tiles validos marcados."""
+        self.save_config()
+        try:
+            frame, targets = self._run_detection()
+        except Exception as exc:
+            messagebox.showerror("AutoFishing", f"Falha no teste: {exc}")
+            return
+
+        tile_size = max(4, parse_int(self.var_tile_size.get(), 32))
+        preview = draw_tile_grid(frame, targets, tile_size)
+        self.log(f"Grid de SQM: {len(targets)} tile(s) valido(s) - feche a janela para continuar.")
+        cv2.imshow("AutoFishing - grid de SQM (ESC ou fechar a janela)", preview)
+        cv2.waitKey(0)
+        cv2.destroyWindow("AutoFishing - grid de SQM (ESC ou fechar a janela)")
 
     # -------------------------------------------------------------- controles
     def worker_config(self) -> dict:
@@ -271,6 +334,9 @@ class FishingWindow(ttk.Frame):
         self.cfg["hsv_lower"] = parse_triple(self.var_hsv_lower.get(), self.cfg["hsv_lower"])
         self.cfg["hsv_upper"] = parse_triple(self.var_hsv_upper.get(), self.cfg["hsv_upper"])
         self.cfg["min_area"] = parse_int(self.var_min_area.get(), 200)
+        self.cfg["tile_size"] = max(4, parse_int(self.var_tile_size.get(), 32))
+        coverage_pct = max(0, min(100, parse_int(self.var_tile_coverage.get(), 35)))
+        self.cfg["min_tile_coverage"] = coverage_pct / 100
         self.cfg["template_threshold"] = parse_float(self.var_threshold.get(), 0.80)
         self.cfg["mouse_button"] = BUTTON_VALUES.get(self.var_button.get(), "right")
         self.cfg["delay_min"] = parse_float(self.var_delay_min.get(), 1.8)

@@ -25,42 +25,85 @@ from core.worker import BaseWorker
 # --------------------------------------------------------------------------
 # Deteccao
 # --------------------------------------------------------------------------
-def find_water_hsv(
+def find_water_tiles_hsv(
     frame: np.ndarray,
     hsv_lower: list[int],
     hsv_upper: list[int],
     min_area: int = 200,
+    tile_size: int = 32,
+    min_tile_coverage: float = 0.35,
 ) -> list[tuple[int, int, int]]:
-    """Encontra blobs de agua por faixa de cor em HSV.
+    """Encontra tiles de agua alinhadas a um grid de SQM (32x32 por padrao).
 
-    Devolve uma lista de (cx, cy, area) em coordenadas RELATIVAS ao frame,
-    ordenada da maior para a menor area.
+    Detectar por contorno/blob devolveria um unico centroide para um lago
+    grande e continuo, entao sortear entre "candidatos" nao mudaria nada. Aqui
+    a mascara de agua e varrida em celulas de `tile_size` px (o tamanho do SQM
+    do Tibia) e cada celula com cobertura de agua suficiente entra como um
+    alvo distinto, dando varios pontos genuinamente diferentes para sortear em
+    cada lance.
+
+    Devolve (cx, cy, cobertura_pct) em coordenadas RELATIVAS ao frame,
+    ordenados da maior para a menor cobertura.
     """
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     lower = np.array(hsv_lower, dtype=np.uint8)
     upper = np.array(hsv_upper, dtype=np.uint8)
     mask = cv2.inRange(hsv, lower, upper)
 
-    # Remove ruido (bordas de sprites, particulas) e fecha buracos pequenos.
     kernel = np.ones((3, 3), np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
 
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if cv2.countNonZero(mask) < min_area:
+        return []
+
+    height, width = mask.shape[:2]
+    tile_size = max(4, int(tile_size))
     results: list[tuple[int, int, int]] = []
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        if area < min_area:
-            continue
-        moments = cv2.moments(contour)
-        if moments["m00"] == 0:
-            continue
-        cx = int(moments["m10"] / moments["m00"])
-        cy = int(moments["m01"] / moments["m00"])
-        results.append((cx, cy, int(area)))
+    for ty in range(0, height, tile_size):
+        for tx in range(0, width, tile_size):
+            cell = mask[ty : ty + tile_size, tx : tx + tile_size]
+            cell_area = cell.shape[0] * cell.shape[1]
+            if cell_area == 0:
+                continue
+            coverage = cv2.countNonZero(cell) / cell_area
+            if coverage < min_tile_coverage:
+                continue
+            cx = tx + cell.shape[1] // 2
+            cy = ty + cell.shape[0] // 2
+            results.append((cx, cy, int(coverage * 100)))
 
     results.sort(key=lambda item: item[2], reverse=True)
     return results
+
+
+def draw_tile_grid(
+    frame: np.ndarray,
+    tiles: list[tuple[int, int, int]],
+    tile_size: int = 32,
+) -> np.ndarray:
+    """Desenha o grid de SQM sobre `frame` e destaca os tiles validos.
+
+    Usado apenas para a pre-visualizacao manual ("Testar deteccao"); nao entra
+    no loop de pesca.
+    """
+    tile_size = max(4, int(tile_size))
+    out = frame.copy()
+    height, width = out.shape[:2]
+
+    for x in range(0, width, tile_size):
+        cv2.line(out, (x, 0), (x, height), (60, 60, 60), 1)
+    for y in range(0, height, tile_size):
+        cv2.line(out, (0, y), (width, y), (60, 60, 60), 1)
+
+    half = tile_size // 2
+    for cx, cy, coverage in tiles:
+        top_left = (cx - half, cy - half)
+        bottom_right = (cx + half, cy + half)
+        cv2.rectangle(out, top_left, bottom_right, (0, 255, 0), 2)
+        cv2.circle(out, (cx, cy), 2, (0, 0, 255), -1)
+
+    return out
 
 
 def find_water_template(
@@ -193,11 +236,13 @@ class AutoFishingWorker(BaseWorker):
             return find_water_template(
                 frame, self.template, self.config.get("template_threshold", 0.80)
             )
-        return find_water_hsv(
+        return find_water_tiles_hsv(
             frame,
             self.config.get("hsv_lower", [90, 60, 40]),
             self.config.get("hsv_upper", [130, 255, 255]),
             int(self.config.get("min_area", 200)),
+            int(self.config.get("tile_size", 32)),
+            float(self.config.get("min_tile_coverage", 0.35)),
         )
 
     def loop(self) -> None:
@@ -205,6 +250,7 @@ class AutoFishingWorker(BaseWorker):
         button = self.config.get("mouse_button", "right")
         jitter = int(self.config.get("click_jitter", 2))
         randomize = bool(self.config.get("randomize_target", True))
+        tile_size = int(self.config.get("tile_size", 32))
         rx, ry = int(self.region[0]), int(self.region[1])
         rod_x, rod_y = int(self.rod_slot[0]), int(self.rod_slot[1])
 
@@ -224,10 +270,18 @@ class AutoFishingWorker(BaseWorker):
                     return
                 continue
 
-            # Sorteia entre os melhores candidatos para nao clicar sempre no
-            # mesmo tile (e tambem evita ficar preso num falso positivo).
-            pool = targets[: min(5, len(targets))]
-            cx, cy, _score = random.choice(pool) if randomize else targets[0]
+            # Cada item de `targets` ja e um SQM distinto (grid de tile_size px),
+            # entao sortear entre todos eles varia de verdade o tile clicado -
+            # ao contrario de sortear entre centroides de blob, que colapsam
+            # num unico candidato quando o lago e uma mancha continua.
+            cx, cy, _score = random.choice(targets) if randomize else targets[0]
+
+            # Sorteia tambem o ponto dentro do SQM escolhido (nao so o centro),
+            # deixando uma margem para nao cair bem na borda do tile.
+            half = max(0, tile_size // 2 - 3)
+            if half:
+                cx += random.randint(-half, half)
+                cy += random.randint(-half, half)
 
             # Abre a vara com o botao direito (equivalente a "usar" o item) antes
             # de aplica-la na agua com o esquerdo - mecanica de "use with" do Tibia.

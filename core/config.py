@@ -33,6 +33,23 @@ CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 
 DEFAULTS: dict[str, Any] = {
+    # Licenca/assinatura - sem uma key valida nenhuma rotina roda.
+    "license": {
+        # URL base do backend (Vercel) que valida a key. Preencher apos o deploy.
+        "api_base_url": "",
+        # Tolerancia offline: aceita a ultima validacao "active" por N horas
+        # sem internet antes de bloquear as rotinas.
+        "grace_period_hours": 12,
+        # Intervalo entre revalidacoes automaticas enquanto o programa esta aberto.
+        "check_interval_minutes": 30,
+        # Sessao e estado da ultima validacao (preenchidos automaticamente, nao editar).
+        "access_token": "",
+        "refresh_token": "",
+        "access_token_expires_at": None,
+        "status": "unknown",
+        "expires_at": None,
+        "checked_at": 0,
+    },
     # Hotkeys globais, compartilhadas pelas duas funcoes
     "hotkeys": {
         "pause": "f6",   # pausa / retoma a funcao em execucao
@@ -49,8 +66,12 @@ DEFAULTS: dict[str, Any] = {
         # Faixa HSV da agua - calibravel pelo usuario a partir de um print da tela dele
         "hsv_lower": [90, 60, 40],
         "hsv_upper": [130, 255, 255],
-        # Area minima (em pixels) de um "blob" de agua para ser considerado tile valido
+        # Area minima (em pixels) de agua na regiao para considerar que ha algo a pescar
         "min_area": 200,
+        # Tamanho do grid de SQM em pixels (32 = tile padrao do Tibia sem zoom)
+        "tile_size": 32,
+        # Cobertura minima de agua (0.0 a 1.0) dentro de um SQM para considera-lo valido
+        "min_tile_coverage": 0.35,
         # Template salvo em assets/ (usado quando detection_mode == "template")
         "template_file": "water_template.png",
         "template_threshold": 0.80,
