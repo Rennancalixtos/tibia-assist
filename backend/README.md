@@ -22,8 +22,13 @@ esta pagina web para login, apenas para cadastro + inicio do pagamento).
    - `service_role` key -> variavel `SUPABASE_SERVICE_ROLE_KEY` (mantenha em
      segredo, nunca exponha no frontend)
 4. Abra o **SQL Editor** do Supabase e execute o conteudo de
-   `backend/supabase/schema.sql` para criar a tabela `licenses`, os indices
-   e o trigger de `updated_at`.
+   `backend/supabase/schema.sql` para criar a tabela `licenses`, os indices,
+   o trigger de `updated_at` e habilitar Row Level Security (sem nenhuma
+   policy, ou seja, acesso publico bloqueado por completo).
+5. Se aparecer a opcao **"Automatically expose new tables"** durante a
+   criacao do projeto/tabela, **desabilite**. So o backend acessa `licenses`,
+   sempre com a `service_role` key (que ignora RLS) - nunca pela Data API
+   publica (PostgREST), entao nao ha motivo pra expor a tabela ali.
 
 ## 2. Criar o produto e o preco no Stripe
 

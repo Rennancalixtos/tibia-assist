@@ -32,3 +32,8 @@ create trigger licenses_set_updated_at
   before update on public.licenses
   for each row
   execute function public.set_licenses_updated_at();
+
+-- So o backend (service_role, que ignora RLS) le/escreve nesta tabela.
+-- RLS habilitada e sem nenhuma policy = acesso publico (anon/authenticated)
+-- totalmente bloqueado, mesmo que a tabela seja exposta na Data API.
+alter table public.licenses enable row level security;
