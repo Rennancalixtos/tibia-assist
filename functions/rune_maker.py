@@ -18,6 +18,7 @@ import numpy as np
 
 from core.input_simulator import InputSimulator
 from core.screen_capture import ScreenCapture, is_valid_region
+from core.tesseract_installer import find_tesseract
 from core.worker import BaseWorker
 
 try:
@@ -31,6 +32,21 @@ OCR_CONFIG = "--psm 7 -c tessedit_char_whitelist=0123456789/"
 
 class OCRUnavailable(RuntimeError):
     pass
+
+
+def configure_tesseract(explicit_cmd: str | None = None) -> None:
+    """Aponta o pytesseract pro binario do Tesseract.
+
+    Usa `explicit_cmd` se informado (campo da GUI); senao tenta achar
+    automaticamente (PATH ou pasta padrao de instalacao) - sem isso, o
+    pytesseract so funciona se "tesseract" estiver no PATH do sistema, o
+    que nem sempre e verdade mesmo com o programa instalado.
+    """
+    if pytesseract is None:
+        return
+    cmd = (explicit_cmd or "").strip() or find_tesseract()
+    if cmd:
+        pytesseract.pytesseract.tesseract_cmd = cmd
 
 
 def preprocess_for_ocr(frame: np.ndarray) -> np.ndarray:
@@ -89,9 +105,7 @@ class RuneMakerWorker(BaseWorker):
         if self.check_mana and not is_valid_region(self.config.get("mana_region")):
             raise ValueError("Regiao de OCR da mana nao configurada.")
 
-        tesseract_cmd = (self.config.get("tesseract_cmd") or "").strip()
-        if tesseract_cmd and pytesseract is not None:
-            pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+        configure_tesseract(self.config.get("tesseract_cmd"))
 
         # Evita repetir a mesma mensagem de "sem recurso" a cada iteracao.
         self._last_warning = ""

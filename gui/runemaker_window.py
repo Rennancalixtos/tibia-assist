@@ -6,8 +6,8 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from core.screen_capture import ScreenCapture, is_valid_region
-from core.tesseract_installer import find_tesseract, install_tesseract
-from functions.rune_maker import OCRUnavailable, RuneMakerWorker, read_number
+from core.tesseract_installer import _bundled_installer_path, find_tesseract, install_tesseract
+from functions.rune_maker import OCRUnavailable, RuneMakerWorker, configure_tesseract, read_number
 from gui.widgets import LogPanel, ScrollableFrame, add_field, parse_float, parse_int, region_text
 
 
@@ -130,14 +130,11 @@ class RuneMakerWindow(ttk.Frame):
     def test_ocr(self) -> None:
         """Le a mana uma unica vez e mostra o que o Tesseract entendeu."""
         self.save_config()
-        import pytesseract  # import tardio: so e necessario neste teste
-
-        if self.cfg.get("tesseract_cmd"):
-            pytesseract.pytesseract.tesseract_cmd = self.cfg["tesseract_cmd"]
+        configure_tesseract(self.cfg.get("tesseract_cmd"))
 
         region = self.cfg.get("mana_region")
         if not is_valid_region(region):
-            self.log("Regiao de mana nao configurada.")
+            messagebox.showwarning("RuneMaker", "Regiao de mana nao configurada.")
             return
         try:
             with ScreenCapture() as cap:
@@ -145,7 +142,9 @@ class RuneMakerWindow(ttk.Frame):
         except OCRUnavailable as exc:
             messagebox.showerror("RuneMaker", str(exc))
             return
-        self.log(f"OCR mana: {value if value is not None else 'nao reconhecido'}")
+        message = f"OCR mana: {value if value is not None else 'nao reconhecido'}"
+        self.log(message)
+        messagebox.showinfo("RuneMaker", message)
 
     def install_tesseract(self) -> None:
         """Baixa e instala o Tesseract OCR silenciosamente, se ainda nao
@@ -154,10 +153,13 @@ class RuneMakerWindow(ttk.Frame):
         if existing:
             messagebox.showinfo("RuneMaker", f"Tesseract ja instalado em:\n{existing}")
             return
+        if _bundled_installer_path():
+            action = "Instalar automaticamente agora? (ja incluso no programa, sem download)"
+        else:
+            action = "Baixar e instalar automaticamente agora? (~25 MB, alguns segundos)"
         if not messagebox.askyesno(
             "RuneMaker",
-            "O Tesseract OCR (usado pra ler a mana) nao foi encontrado.\n\n"
-            "Baixar e instalar automaticamente agora? (~25 MB, alguns segundos)",
+            f"O Tesseract OCR (usado pra ler a mana) nao foi encontrado.\n\n{action}",
         ):
             return
 
