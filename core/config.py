@@ -49,6 +49,8 @@ DEFAULTS: dict[str, Any] = {
         "status": "unknown",
         "expires_at": None,
         "checked_at": 0,
+        # Assinatura HMAC dos campos acima (detecta edicao manual do arquivo).
+        "cache_sig": "",
     },
     # Hotkeys globais, compartilhadas pelas duas funcoes
     "hotkeys": {

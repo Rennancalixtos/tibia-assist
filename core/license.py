@@ -10,6 +10,8 @@ assinatura e sempre decidida pelo backend.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import time
 import urllib.error
@@ -17,6 +19,13 @@ import urllib.request
 from datetime import datetime, timezone
 
 REQUEST_TIMEOUT = 10
+
+# Segredo fixo embutido no app para assinar o cache local (status/expires_at/
+# checked_at) e detectar edicao manual do config.json. NAO e um segredo real
+# (esta no binario/fonte, um engenheiro reverso pode extrai-lo) - o objetivo e
+# so impedir que editar o JSON num editor de texto burle o periodo de
+# tolerancia offline, nao resistir a um ataque dedicado ao binario.
+_CACHE_SECRET = b"tibia-assist-offline-cache-v1-8f2c1e9a4b6d0731"
 
 
 def _parse_iso(value: str | None) -> datetime | None:
@@ -26,6 +35,13 @@ def _parse_iso(value: str | None) -> datetime | None:
         return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def _sign_cache(refresh_token: str, status: str, expires_at: str | None, checked_at: float) -> str:
+    payload = "\x00".join(
+        [str(refresh_token), str(status), str(expires_at), f"{float(checked_at):.6f}"]
+    )
+    return hmac.new(_CACHE_SECRET, payload.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 class LicenseManager:
@@ -57,11 +73,28 @@ class LicenseManager:
         return bool(self.section.get("refresh_token"))
 
     # --------------------------------------------------------------- estado
+    def _current_cache_sig(self) -> str:
+        return _sign_cache(
+            self.section.get("refresh_token", ""),
+            self.section.get("status", "unknown"),
+            self.section.get("expires_at"),
+            float(self.section.get("checked_at") or 0),
+        )
+
     def _apply_cached_state(self) -> None:
-        """Sem internet, aceita o ultimo estado 'active' por algumas horas."""
+        """Sem internet, aceita o ultimo estado 'active' por algumas horas.
+
+        So confia nesses campos se a assinatura HMAC local ainda bater - do
+        contrario, o config.json foi editado manualmente (ou corrompido) e a
+        tolerancia offline nao se aplica, forcando uma revalidacao online.
+        """
         if not self.logged_in:
             self.valid = False
             self.message = "Faca login para ativar o programa."
+            return
+        if self.section.get("cache_sig") != self._current_cache_sig():
+            self.valid = False
+            self.message = "Sessao local invalida. Conecte-se a internet para revalidar."
             return
         if self.section.get("status") != "active":
             self.valid = False
@@ -95,6 +128,7 @@ class LicenseManager:
         self.section["status"] = license_info.get("status", "unknown")
         self.section["expires_at"] = license_info.get("expires_at")
         self.section["checked_at"] = time.time()
+        self.section["cache_sig"] = self._current_cache_sig()
         self.valid = bool(license_info.get("valid"))
         self.message = "" if self.valid else str(license_info.get("reason") or "Assinatura invalida.")
 
@@ -104,6 +138,7 @@ class LicenseManager:
         self.section["access_token_expires_at"] = None
         self.section["status"] = "unknown"
         self.section["expires_at"] = None
+        self.section["cache_sig"] = ""
         self.valid = False
 
     # ------------------------------------------------------------- rede
