@@ -49,8 +49,12 @@ DEFAULTS: dict[str, Any] = {
         # Faixa HSV da agua - calibravel pelo usuario a partir de um print da tela dele
         "hsv_lower": [90, 60, 40],
         "hsv_upper": [130, 255, 255],
-        # Area minima (em pixels) de um "blob" de agua para ser considerado tile valido
+        # Area minima (em pixels) de agua na regiao para considerar que ha algo a pescar
         "min_area": 200,
+        # Tamanho do grid de SQM em pixels (32 = tile padrao do Tibia sem zoom)
+        "tile_size": 32,
+        # Cobertura minima de agua (0.0 a 1.0) dentro de um SQM para considera-lo valido
+        "min_tile_coverage": 0.35,
         # Template salvo em assets/ (usado quando detection_mode == "template")
         "template_file": "water_template.png",
         "template_threshold": 0.80,
