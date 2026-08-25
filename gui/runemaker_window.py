@@ -6,7 +6,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from core.screen_capture import ScreenCapture, is_valid_region
-from core.tesseract_installer import find_tesseract, install_tesseract
+from core.tesseract_installer import _bundled_installer_path, find_tesseract, install_tesseract
 from functions.rune_maker import OCRUnavailable, RuneMakerWorker, read_number
 from gui.widgets import LogPanel, ScrollableFrame, add_field, parse_float, parse_int, region_text
 
@@ -154,10 +154,13 @@ class RuneMakerWindow(ttk.Frame):
         if existing:
             messagebox.showinfo("RuneMaker", f"Tesseract ja instalado em:\n{existing}")
             return
+        if _bundled_installer_path():
+            action = "Instalar automaticamente agora? (ja incluso no programa, sem download)"
+        else:
+            action = "Baixar e instalar automaticamente agora? (~25 MB, alguns segundos)"
         if not messagebox.askyesno(
             "RuneMaker",
-            "O Tesseract OCR (usado pra ler a mana) nao foi encontrado.\n\n"
-            "Baixar e instalar automaticamente agora? (~25 MB, alguns segundos)",
+            f"O Tesseract OCR (usado pra ler a mana) nao foi encontrado.\n\n{action}",
         ):
             return
 

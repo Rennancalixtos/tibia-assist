@@ -1,9 +1,11 @@
 """Instala o Tesseract OCR automaticamente se nao estiver presente.
 
 So usado pelo RuneMaker (leitura de mana via OCR) - o AutoFishing nao
-depende disso. Baixa o instalador oficial mais recente do
-tesseract-ocr/tesseract no GitHub (repo publico, sem necessidade de
-autenticacao ou token) e roda silenciosamente.
+depende disso. Empacotado (PyInstaller), usa o instalador embutido em
+assets/ (ver EasyF.spec - `datas=[("assets","assets")]` ja bundla a pasta
+toda, sem precisar internet nesse momento). Rodando do codigo-fonte (ou se
+o arquivo embutido nao existir por algum motivo), cai para baixar a versao
+mais recente do tesseract-ocr/tesseract no GitHub (repo publico).
 """
 
 from __future__ import annotations
@@ -12,12 +14,14 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import urllib.error
 import urllib.request
 
 RELEASES_API = "https://api.github.com/repos/tesseract-ocr/tesseract/releases/latest"
 DEFAULT_INSTALL_DIR = r"C:\Program Files\Tesseract-OCR"
+BUNDLED_INSTALLER_NAME = "tesseract-ocr-w64-setup.exe"
 REQUEST_TIMEOUT = 15
 
 
@@ -30,6 +34,17 @@ def find_tesseract() -> str | None:
     if os.path.exists(default_exe):
         return default_exe
     return None
+
+
+def _bundled_installer_path() -> str | None:
+    """Caminho do instalador embutido no pacote (PyInstaller onefile
+    extrai `datas` para `sys._MEIPASS` em tempo de execucao). Rodando do
+    codigo-fonte, `_MEIPASS` nao existe e isso devolve None."""
+    meipass = getattr(sys, "_MEIPASS", None)
+    if not meipass:
+        return None
+    candidate = os.path.join(meipass, "assets", BUNDLED_INSTALLER_NAME)
+    return candidate if os.path.exists(candidate) else None
 
 
 def _find_windows_installer_url() -> str | None:
@@ -51,29 +66,38 @@ def _find_windows_installer_url() -> str | None:
 
 
 def install_tesseract(on_progress=None) -> tuple[bool, str]:
-    """Baixa e instala o Tesseract silenciosamente (instalador NSIS, `/S`).
+    """Instala o Tesseract silenciosamente (instalador NSIS, `/S`).
 
-    `on_progress`, se informado, e chamado com uma string descrevendo a
-    etapa atual (pensado pra atualizar um label da GUI). Devolve
-    (sucesso, mensagem).
+    Usa o instalador embutido no pacote se houver (nenhum download
+    necessario); senao, baixa a versao mais recente do GitHub pra uma pasta
+    temporaria. `on_progress`, se informado, e chamado com uma string
+    descrevendo a etapa atual (pensado pra atualizar um label da GUI).
+    Devolve (sucesso, mensagem).
     """
 
     def report(msg: str) -> None:
         if on_progress:
             on_progress(msg)
 
-    url = _find_windows_installer_url()
-    if not url:
-        return False, "Nao foi possivel encontrar o instalador do Tesseract no GitHub."
+    bundled = _bundled_installer_path()
+    downloaded_path: str | None = None
 
-    installer_path = os.path.join(tempfile.gettempdir(), "tesseract-ocr-setup.exe")
-    report("Baixando instalador do Tesseract...")
-    try:
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=120) as resp, open(installer_path, "wb") as fp:
-            shutil.copyfileobj(resp, fp)
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        return False, f"Falha ao baixar o instalador: {exc}"
+    if bundled:
+        installer_path = bundled
+    else:
+        url = _find_windows_installer_url()
+        if not url:
+            return False, "Nao foi possivel encontrar o instalador do Tesseract no GitHub."
+
+        downloaded_path = os.path.join(tempfile.gettempdir(), "tesseract-ocr-setup.exe")
+        report("Baixando instalador do Tesseract...")
+        try:
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=120) as resp, open(downloaded_path, "wb") as fp:
+                shutil.copyfileobj(resp, fp)
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            return False, f"Falha ao baixar o instalador: {exc}"
+        installer_path = downloaded_path
 
     report("Instalando (silencioso, pode levar um minuto)...")
     try:
@@ -81,10 +105,11 @@ def install_tesseract(on_progress=None) -> tuple[bool, str]:
     except (OSError, subprocess.TimeoutExpired) as exc:
         return False, f"Falha ao executar o instalador: {exc}"
     finally:
-        try:
-            os.remove(installer_path)
-        except OSError:
-            pass
+        if downloaded_path:  # nunca apaga o instalador embutido no pacote
+            try:
+                os.remove(downloaded_path)
+            except OSError:
+                pass
 
     if result.returncode != 0:
         return False, f"Instalador terminou com codigo de saida {result.returncode}."

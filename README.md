@@ -213,8 +213,13 @@ onde seu usuário tenha permissão de escrita (evite `C:\Program Files`).
 
 ### Observações
 
-- O **Tesseract OCR** não é embutido no executável: ele é um programa separado e
-  precisa estar instalado na máquina que for rodar o RuneMaker.
+- O **instalador do Tesseract OCR** vem embutido no executável (dentro de
+  `assets/`), mas o arquivo em si **não é versionado no git** (só o binário
+  final do build está gitignored - ~25 MB). Antes de rodar `build.bat`, baixe
+  o instalador mais recente do Windows 64-bit em
+  https://github.com/tesseract-ocr/tesseract/releases/latest e salve como
+  `assets/tesseract-ocr-w64-setup.exe`. Sem esse arquivo, o RuneMaker cai
+  para baixar na hora (ver `core/tesseract_installer.py`).
 - O build usa `upx=False` de propósito — executáveis comprimidos com UPX viram
   falso positivo de antivírus com frequência.
 - É normal o Windows Defender ou o SmartScreen alertarem sobre um `.exe` novo e
