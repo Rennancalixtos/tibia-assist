@@ -91,3 +91,71 @@ export async function getLicenseForUser(userId: string): Promise<License> {
 
   return buildLicense(data as LicenseRow);
 }
+
+/**
+ * Gera um novo token de sessao para `userId` e grava via UPDATE simples
+ * (nunca upsert) - login/signup so chamam isto depois que a linha em
+ * `licenses` ja existe, entao um UPDATE nunca insere uma linha parcial nem
+ * toca nas colunas de assinatura (status/stripe_*) que nao estao no SET.
+ * Se a linha ainda nao existir (conta sem nenhuma assinatura iniciada),
+ * `count === 0` e o chamador simplesmente nao inclui session_token na
+ * resposta - a conta segue sem fiscalizacao de sessao unica ate ter uma
+ * linha (primeiro checkout).
+ */
+export async function issueSessionToken(userId: string): Promise<string | null> {
+  const sessionToken = crypto.randomUUID();
+
+  const { error, count } = await supabaseAdmin
+    .from("licenses")
+    .update({ session_token: sessionToken, session_heartbeat_at: new Date().toISOString() }, { count: "exact" })
+    .eq("user_id", userId);
+
+  if (error || !count) {
+    return null;
+  }
+  return sessionToken;
+}
+
+export type HeartbeatResult = "ok" | "replaced" | "no_license";
+
+/**
+ * Atualiza `session_heartbeat_at` SOMENTE se `sessionToken` ainda for o
+ * token vigente da conta - um unico UPDATE atomico (sem SELECT previo) para
+ * nao ter uma janela de corrida entre checar e atualizar.
+ */
+export async function touchSession(userId: string, sessionToken: string): Promise<HeartbeatResult> {
+  const { error, count } = await supabaseAdmin
+    .from("licenses")
+    .update({ session_heartbeat_at: new Date().toISOString() }, { count: "exact" })
+    .eq("user_id", userId)
+    .eq("session_token", sessionToken);
+
+  if (error) {
+    return "no_license";
+  }
+  if (count) {
+    return "ok";
+  }
+
+  // 0 linhas afetadas: ou a conta nao tem licenca, ou o token nao bate mais
+  // (outra sessao fez login depois). Distingue os dois pra nao rotular um
+  // caso de "sem licenca" como "sessao substituida".
+  const { data } = await supabaseAdmin
+    .from("licenses")
+    .select("user_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  return data ? "replaced" : "no_license";
+}
+
+/**
+ * Libera a conta imediatamente para login em outro lugar (chamado no logout
+ * explicito, best-effort - falha aqui nao deve travar o logout do cliente).
+ */
+export async function clearSessionToken(userId: string): Promise<void> {
+  await supabaseAdmin
+    .from("licenses")
+    .update({ session_token: null })
+    .eq("user_id", userId);
+}

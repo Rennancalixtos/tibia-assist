@@ -48,6 +48,10 @@ DEFAULTS: dict[str, Any] = {
         "access_token": "",
         "refresh_token": "",
         "access_token_expires_at": None,
+        # Token de sessao unica por conta (comparado pelo heartbeat periodico
+        # com o servidor - ver LicenseManager.heartbeat). "" = conta sem
+        # fiscalizacao ainda (nunca logou depois desta feature existir).
+        "session_token": "",
         "status": "unknown",
         "expires_at": None,
         "checked_at": 0,
@@ -107,6 +111,16 @@ DEFAULTS: dict[str, Any] = {
         # Cada pausa dura um periodo aleatorio de ate 2 min
         "break_duration_min": 10,
         "break_duration_max": 120,
+    },
+    # Modo de clique/tecla em background (PostMessage direto pra janela do
+    # jogo, sem mover o cursor real). Global (nao e por aba) porque afeta as
+    # duas automacoes igual.
+    "background_mode": {
+        "enabled": False,
+        # Substring do titulo da janela do jogo, resolvida de novo (via
+        # find_window_by_title) a cada inicio de rotina - nao guardamos o
+        # hwnd em si porque ele muda a cada vez que o jogo e reaberto.
+        "window_title": "",
     },
     "runemaker": {
         # Tecla de atalho da magia de criar runa configurada dentro do jogo

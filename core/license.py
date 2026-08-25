@@ -211,6 +211,12 @@ class LicenseManager:
         self.section["access_token"] = _protect(body.get("access_token", ""))
         self.section["refresh_token"] = _protect(body.get("refresh_token", ""))
         self.section["access_token_expires_at"] = body.get("expires_at")
+        # `session_token` so vem em login (nunca em refresh, de proposito -
+        # ver /api/auth/refresh) - quando ausente, preserva o valor atual em
+        # vez de apagar, senao o proprio refresh periodico invalidaria a
+        # fiscalizacao de sessao unica desta mesma instancia.
+        if "session_token" in body:
+            self.section["session_token"] = body.get("session_token") or ""
         license_info = body.get("license") or {}
         self.section["status"] = license_info.get("status", "unknown")
         self.section["expires_at"] = license_info.get("expires_at")
@@ -223,6 +229,7 @@ class LicenseManager:
         self.section["access_token"] = ""
         self.section["refresh_token"] = ""
         self.section["access_token_expires_at"] = None
+        self.section["session_token"] = ""
         self.section["status"] = "unknown"
         self.section["expires_at"] = None
         self.section["cache_sig"] = ""
@@ -330,5 +337,65 @@ class LicenseManager:
         return body.get("url")
 
     def logout(self) -> None:
+        access_token = self._plain("access_token")
+        if access_token:
+            # Best-effort: libera a conta pra login em outro lugar
+            # imediatamente, sem esperar o token antigo expirar sozinho no
+            # proximo heartbeat de quem tentar logar. Falha aqui (sem rede,
+            # backend fora do ar) nao impede o logout local.
+            self._post("/api/auth/logout", {"access_token": access_token})
         self._clear_session()
         self.message = "Faca login para ativar o programa."
+
+    def heartbeat(self) -> str:
+        """Confirma com o servidor que esta e ainda a sessao ativa da conta.
+
+        Devolve:
+        - "ok": sessao confirmada (ou conta ainda sem fiscalizacao de sessao
+          unica - sem session_token local, nao ha nada pra checar).
+        - "replaced": outro login assumiu a conta - quem chamar deve forcar
+          logout com o aviso "acessada em outro local".
+        - "auth_error": access_token expirado/invalido e uma tentativa de
+          `refresh()` tambem nao resolveu - sessao morta por outro motivo
+          que nao "sessao substituida" (ex: dessincronizado apos hibernar).
+        - "network_error": sem resposta do servidor - NAO e evidencia de
+          nada, so significa "tentar de novo depois" (mesmo espirito da
+          tolerancia offline ja existente pra validade da assinatura).
+        """
+        session_token = str(self.section.get("session_token") or "")
+        if not session_token:
+            return "ok"
+
+        access_token = self._plain("access_token")
+        if not access_token:
+            return "auth_error"
+
+        outcome = self._heartbeat_once(access_token, session_token)
+        if outcome != "auth_error":
+            return outcome
+
+        # Access token pode estar so desatualizado (ex: maquina hibernou
+        # alem do ciclo normal de refresh) - tenta renovar antes de concluir
+        # que a sessao morreu, pra nao confundir isso com "acessada em outro
+        # local" (mensagens erradas geram ticket de suporte por engano).
+        if not self.refresh():
+            return "auth_error"
+        access_token = self._plain("access_token")
+        if not access_token:
+            return "auth_error"
+        return self._heartbeat_once(access_token, session_token)
+
+    def _heartbeat_once(self, access_token: str, session_token: str) -> str:
+        status, body = self._post(
+            "/api/auth/heartbeat", {"access_token": access_token, "session_token": session_token}
+        )
+        if body is None:
+            return "network_error"
+        if status == 401:
+            return "auth_error"
+        if status != 200:
+            return "network_error"
+        if body.get("ok"):
+            return "ok"
+        reason = body.get("reason")
+        return "replaced" if reason == "replaced" else "ok"

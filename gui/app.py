@@ -17,7 +17,7 @@ import queue
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from core import region_selector
+from core import background_input, region_selector
 from core.config import Config
 from core.coordinator import AutomationCoordinator
 from core.input_simulator import InputSimulator
@@ -65,6 +65,7 @@ class App(tk.Tk):
         self.after(100, self._pump_events)
 
         self._schedule_license_check()
+        self._schedule_heartbeat()
 
     # ---------------------------------------------------------------- layout
     def _build(self) -> None:
@@ -98,6 +99,37 @@ class App(tk.Tk):
         self.var_hotkey_status = tk.StringVar(value="")
         ttk.Label(top, textvariable=self.var_hotkey_status, foreground="#666").grid(
             row=1, column=0, columnspan=7, sticky="w", padx=4, pady=(4, 0)
+        )
+
+        # Modo background (PostMessage, sem mover o mouse real) -------------
+        bg = ttk.LabelFrame(self, text="Modo background", padding=6)
+        bg.pack(fill="x", padx=8, pady=(0, 4))
+
+        bgcfg = self.config_store.section("background_mode")
+        self.var_background_enabled = tk.BooleanVar(value=bool(bgcfg.get("enabled", False)))
+        self.var_background_window = tk.StringVar(value=bgcfg.get("window_title", ""))
+
+        ttk.Checkbutton(
+            bg, text="Nao usar o mouse real (PostMessage direto pra janela do jogo)",
+            variable=self.var_background_enabled,
+        ).grid(row=0, column=0, columnspan=3, sticky="w", padx=4)
+        ttk.Label(bg, text="Janela:").grid(row=1, column=0, sticky="w", padx=4, pady=(4, 0))
+        ttk.Entry(bg, textvariable=self.var_background_window, width=32, state="readonly").grid(
+            row=1, column=1, sticky="w", pady=(4, 0)
+        )
+        ttk.Button(bg, text="Selecionar janela do jogo...", command=self._pick_background_window).grid(
+            row=1, column=2, padx=8, pady=(4, 0)
+        )
+        ttk.Button(bg, text="Testar clique em background...", command=self._test_background_click).grid(
+            row=2, column=0, columnspan=2, sticky="w", padx=4, pady=(4, 0)
+        )
+        ttk.Button(bg, text="Aplicar", command=self._apply_background_mode).grid(
+            row=2, column=2, padx=8, pady=(4, 0)
+        )
+
+        self.var_background_status = tk.StringVar(value="")
+        ttk.Label(bg, textvariable=self.var_background_status, foreground="#666", wraplength=700).grid(
+            row=3, column=0, columnspan=3, sticky="w", padx=4, pady=(4, 0)
         )
 
         # Abas ---------------------------------------------------------------
@@ -194,6 +226,90 @@ class App(tk.Tk):
             self.lift()
         return point
 
+    # --------------------------------------------------------- modo background
+    def _resolve_background_hwnd(self):
+        """Devolve o hwnd atual da janela do jogo (ou None), resolvido de
+        novo pelo titulo salvo - o hwnd muda a cada vez que o jogo abre."""
+        title = self.config_store.get("background_mode.window_title", "") or ""
+        if not title:
+            return None
+        try:
+            return background_input.find_window_by_title(title)
+        except Exception:
+            return None
+
+    def _pick_background_window(self) -> None:
+        self.var_background_status.set("Clique em qualquer ponto da janela do jogo...")
+        self.update_idletasks()
+        point = self.select_point("Clique na janela do jogo (para o modo background)")
+        if point is None:
+            self.var_background_status.set("Selecao cancelada.")
+            return
+        x, y = point
+        try:
+            found = background_input.window_title_at_point(x, y)
+        except Exception as exc:
+            self.var_background_status.set(f"Falha ao identificar a janela: {exc}")
+            return
+        if not found:
+            self.var_background_status.set("Nao foi possivel identificar uma janela nesse ponto.")
+            return
+        _hwnd, title = found
+        self.var_background_window.set(title)
+        self.var_background_status.set(f"Janela selecionada: {title!r}. Clique em Aplicar para salvar.")
+
+    def _apply_background_mode(self) -> None:
+        bgcfg = self.config_store.section("background_mode")
+        bgcfg["enabled"] = bool(self.var_background_enabled.get())
+        bgcfg["window_title"] = self.var_background_window.get().strip()
+        self.config_store.save()
+        if bgcfg["enabled"] and not bgcfg["window_title"]:
+            self.var_background_status.set(
+                "Modo background ativado, mas nenhuma janela foi selecionada ainda."
+            )
+        else:
+            self.var_background_status.set("Configuracao de modo background salva.")
+
+    def _test_background_click(self) -> None:
+        title = self.var_background_window.get().strip()
+        if not title:
+            messagebox.showwarning(APP_NAME, "Selecione a janela do jogo primeiro.")
+            return
+        hwnd = None
+        try:
+            hwnd = background_input.find_window_by_title(title)
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, f"Falha ao localizar a janela: {exc}")
+            return
+        if not hwnd:
+            messagebox.showerror(APP_NAME, "Janela do jogo nao encontrada (titulo salvo nao bate mais).")
+            return
+
+        point = self.select_point("Clique no ponto que sera usado no teste (ex: um botao do jogo)")
+        if point is None:
+            return
+        x, y = point
+
+        messages: list[str] = []
+        tester = InputSimulator(background_hwnd=hwnd, on_fallback=messages.append)
+        try:
+            tester.click(x, y)
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, f"Falha ao enviar o clique de teste: {exc}")
+            return
+
+        if messages:
+            messagebox.showwarning(
+                APP_NAME,
+                "O modo background falhou nesse teste e caiu para o mouse real:\n" + "\n".join(messages),
+            )
+        else:
+            messagebox.showinfo(
+                APP_NAME,
+                "Mensagem de clique enviada para a janela do jogo sem mover o mouse real.\n"
+                "Isso NAO confirma que o jogo reagiu - confirme visualmente se o clique funcionou.",
+            )
+
     # --------------------------------------------------------------- licenca
     def _save_license(self) -> None:
         self.config_store.save()
@@ -239,6 +355,41 @@ class App(tk.Tk):
             )
         self._schedule_license_check()
 
+    # ------------------------------------------------------- sessao unica (heartbeat)
+    HEARTBEAT_INTERVAL_MS = 45_000
+
+    def _schedule_heartbeat(self) -> None:
+        self.after(self.HEARTBEAT_INTERVAL_MS, self._periodic_heartbeat)
+
+    def _periodic_heartbeat(self) -> None:
+        result = self.license.heartbeat()
+        self.config_store.save()
+
+        if result == "replaced":
+            self._force_logout("Sua conta foi acessada em outro local. Esta sessao foi encerrada.")
+            return
+        if result == "auth_error" and not self.license.valid:
+            # refresh() ja tentou renovar e falhou de verdade (nao e so falta
+            # de rede) - sessao morta por outro motivo que nao "substituida".
+            self._force_logout(f"Sessao expirada: {self.license.message}\nFaca login novamente.")
+            return
+        # "ok", "network_error" ou "auth_error" com sessao ainda valida em
+        # cache (tolerancia offline) - nao e evidencia de nada, so tenta de
+        # novo no proximo ciclo, do mesmo jeito que a validade de assinatura
+        # ja tolera queda de rede passageira.
+        self._schedule_heartbeat()
+
+    def _force_logout(self, message: str) -> None:
+        """Encerra a sessao pra sempre a partir de um evento assincrono
+        (sessao substituida / expirada) - mesmo mecanismo do botao "Sair da
+        conta", so sem a confirmacao (o usuario nao pediu isso agora)."""
+        self.stop_all()
+        self.license.logout()
+        self.config_store.save()
+        messagebox.showwarning(APP_NAME, message)
+        self.logout_requested = True
+        self.destroy()
+
     # ---------------------------------------------------------------- workers
     def start_worker(self, key: str, worker_class, cfg: dict) -> None:
         if not ensure_license(self, self.license, self._save_license):
@@ -251,6 +402,10 @@ class App(tk.Tk):
             return
         cfg = dict(cfg)
         cfg["_coordinator"] = self.coordinator
+        if self.config_store.get("background_mode.enabled", False):
+            cfg["_background_hwnd"] = self._resolve_background_hwnd()
+        else:
+            cfg["_background_hwnd"] = None
         worker = worker_class(cfg, self.events)
         self.workers[key] = worker
         worker.start()
