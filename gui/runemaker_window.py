@@ -8,9 +8,9 @@ from tkinter import messagebox, ttk
 
 from core.config import ASSETS_DIR
 from core.screen_capture import ScreenCapture, is_valid_region, save_image
-from core.tesseract_installer import _bundled_installer_path, find_tesseract, install_tesseract
 from functions.rune_maker import OCRUnavailable, RuneMakerWorker, configure_tesseract, read_number
-from gui.widgets import LogPanel, ScrollableFrame, add_field, parse_float, parse_int, region_text
+from gui.mana_overlay import ManaOverlay
+from gui.widgets import LogPanel, ScrollableFrame, add_field, add_hotkey_field, parse_float, parse_int, region_text
 
 MODE_LABELS = {"craft": "Criar runas", "mana_training": "ManaTraining"}
 MODE_VALUES = {label: value for value, label in MODE_LABELS.items()}
@@ -31,9 +31,9 @@ class RuneMakerWindow(ttk.Frame):
         self.var_jitter = tk.StringVar(value=str(self.cfg.get("click_jitter")))
         self.var_min_mana = tk.StringVar(value=str(self.cfg.get("min_mana")))
         self.var_check_mana = tk.BooleanVar(value=bool(self.cfg.get("check_mana", True)))
-        self.var_tesseract = tk.StringVar(value=self.cfg.get("tesseract_cmd", ""))
         self.var_slot = tk.StringVar(value=region_text(self.cfg.get("blank_slot")))
         self.var_mana_region = tk.StringVar(value=region_text(self.cfg.get("mana_region")))
+        self.var_mana_point = tk.StringVar(value=region_text(self.cfg.get("mana_display_point")))
         self.var_status = tk.StringVar(value="parado")
         self.var_counter = tk.StringVar(value="0")
 
@@ -55,6 +55,10 @@ class RuneMakerWindow(ttk.Frame):
         self.body = scroll.body
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
+
+        self.mana_overlay = ManaOverlay(self.app)
+        self.mana_overlay.configure_region(self.cfg.get("mana_region"))
+        self.mana_overlay.configure_display_point(self.cfg.get("mana_display_point"))
 
         self._build()
         self._on_mode_change()
@@ -86,7 +90,7 @@ class RuneMakerWindow(ttk.Frame):
         # Magia e blank runes -------------------------------------------------
         box_spell = ttk.LabelFrame(body, text="2. Magia e blank runes")
         box_spell.grid(row=1, column=0, sticky="ew", pady=4)
-        add_field(box_spell, 0, "Tecla da magia", self.var_spell, 8, "hotkey configurada no jogo (ex: f2)")
+        add_hotkey_field(box_spell, 0, "Tecla da magia", self.var_spell, 10, "hotkey configurada no jogo (ex: f2)")
         self.entry_amount = add_field(box_spell, 1, "Quantidade de runas", self.var_amount, 8, "0 = ate acabar a mana")
 
         self.btn_pick_blank_slot = ttk.Button(
@@ -165,14 +169,20 @@ class RuneMakerWindow(ttk.Frame):
         ttk.Label(box_ocr, textvariable=self.var_mana_region).grid(row=0, column=2, sticky="w", padx=4)
 
         add_field(box_ocr, 1, "Mana minima", self.var_min_mana, 8, "pausa abaixo disso")
-        add_field(box_ocr, 2, "Caminho do Tesseract", self.var_tesseract, 36, "vazio = usar o PATH")
 
         ttk.Button(box_ocr, text="Testar OCR", command=self.test_ocr).grid(
-            row=3, column=0, padx=4, pady=6, sticky="w"
+            row=2, column=0, padx=4, pady=6, sticky="w"
         )
+
         ttk.Button(
-            box_ocr, text="Instalar Tesseract automaticamente...", command=self.install_tesseract
-        ).grid(row=3, column=1, columnspan=2, padx=4, pady=6, sticky="w")
+            box_ocr, text="Selecionar onde exibir o valor da mana...", command=self.pick_mana_display_point
+        ).grid(row=3, column=0, columnspan=2, padx=4, pady=(0, 6), sticky="w")
+        ttk.Label(box_ocr, textvariable=self.var_mana_point).grid(row=3, column=2, sticky="w", padx=4)
+        ttk.Label(
+            box_ocr,
+            text="Overlay sobre a tela do jogo: marca a regiao acima e mostra o valor lido nesse ponto.",
+            foreground="#666",
+        ).grid(row=4, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 4))
 
         # Ritmo -------------------------------------------------------------
         box_rate = ttk.LabelFrame(body, text="4. Ritmo")
@@ -269,8 +279,21 @@ class RuneMakerWindow(ttk.Frame):
             return
         self.cfg[f"{key}_region"] = region
         self.var_mana_region.set(region_text(region))
+        self.mana_overlay.configure_region(region)
         self.app.config_store.save()
         self.log(f"Regiao de {label} definida: {region_text(region)}")
+
+    def pick_mana_display_point(self) -> None:
+        point = self.app.select_point(
+            "Clique onde exibir o valor da mana durante a automacao  -  ESC cancela"
+        )
+        if not point:
+            return
+        self.cfg["mana_display_point"] = list(point)
+        self.var_mana_point.set(region_text(point))
+        self.mana_overlay.configure_display_point(point)
+        self.app.config_store.save()
+        self.log(f"Ponto de exibicao da mana definido: {region_text(point)}")
 
     def _capture_empty_template(self, slot_key: str, label: str, region_var: tk.StringVar) -> None:
         """Recorta o slot VAZIO como referencia pra deteccao por template
@@ -292,7 +315,7 @@ class RuneMakerWindow(ttk.Frame):
     def test_ocr(self) -> None:
         """Le a mana uma unica vez e mostra o que o Tesseract entendeu."""
         self.save_config()
-        configure_tesseract(self.cfg.get("tesseract_cmd"))
+        configure_tesseract(on_progress=self.log)
 
         region = self.cfg.get("mana_region")
         if not is_valid_region(region):
@@ -338,34 +361,6 @@ class RuneMakerWindow(ttk.Frame):
         message = "Sequencia de teste concluida (ver log)." if ok else "Sequencia de teste falhou em alguma validacao (ver log)."
         messagebox.showinfo("RuneMaker", message)
 
-    def install_tesseract(self) -> None:
-        """Baixa e instala o Tesseract OCR silenciosamente, se ainda nao
-        estiver presente no PATH ou no local padrao de instalacao."""
-        existing = find_tesseract()
-        if existing:
-            messagebox.showinfo("RuneMaker", f"Tesseract ja instalado em:\n{existing}")
-            return
-        if _bundled_installer_path():
-            action = "Instalar automaticamente agora? (ja incluso no programa, sem download)"
-        else:
-            action = "Baixar e instalar automaticamente agora? (~25 MB, alguns segundos)"
-        if not messagebox.askyesno(
-            "RuneMaker",
-            f"O Tesseract OCR (usado pra ler a mana) nao foi encontrado.\n\n{action}",
-        ):
-            return
-
-        def report(msg: str) -> None:
-            self.log(msg)
-            self.update_idletasks()
-
-        ok, message = install_tesseract(on_progress=report)
-        self.log(message)
-        if ok:
-            messagebox.showinfo("RuneMaker", message)
-        else:
-            messagebox.showerror("RuneMaker", message)
-
     # -------------------------------------------------------------- controles
     def save_config(self) -> None:
         self.cfg["spell_hotkey"] = self.var_spell.get().strip().lower()
@@ -375,7 +370,6 @@ class RuneMakerWindow(ttk.Frame):
         self.cfg["click_jitter"] = parse_int(self.var_jitter.get(), 2)
         self.cfg["min_mana"] = parse_int(self.var_min_mana.get(), 300)
         self.cfg["check_mana"] = bool(self.var_check_mana.get())
-        self.cfg["tesseract_cmd"] = self.var_tesseract.get().strip()
         self.cfg["mode"] = MODE_VALUES.get(self.var_mode.get(), "craft")
         self.cfg["no_hand_mode"] = bool(self.var_no_hand.get())
         coverage_pct = max(0, min(100, parse_int(self.var_empty_threshold.get(), 90)))
@@ -418,6 +412,13 @@ class RuneMakerWindow(ttk.Frame):
         self.radio_craft.configure(state=lock_state)
         self.radio_mana_training.configure(state=lock_state)
         self.chk_no_hand.configure(state=lock_state)
+        if running:
+            self.mana_overlay.show()
+        else:
+            self.mana_overlay.hide()
 
     def on_counter(self, value: int) -> None:
         self.var_counter.set(str(value))
+
+    def on_mana_reading(self, value) -> None:
+        self.mana_overlay.update_value(value)

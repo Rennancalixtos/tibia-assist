@@ -60,9 +60,9 @@ DEFAULTS: dict[str, Any] = {
     },
     # Hotkeys globais, compartilhadas pelas duas funcoes
     "hotkeys": {
-        "pause": "f6",   # pausa / retoma a funcao em execucao
-        "stop": "f7",    # para completamente
-        "enabled": True,  # permite desligar o hook global de teclado
+        "pause": "pause",  # pausa / retoma a funcao em execucao (tecla Pause/Break)
+        "stop": "f7",      # para completamente
+        "enabled": True,   # permite desligar o hook global de teclado
     },
     "fishing": {
         # Coordenada absoluta [x, y] do slot da vara de pescar na backpack
@@ -131,6 +131,10 @@ DEFAULTS: dict[str, Any] = {
         "amount": 0,
         # Regiao de OCR: [x, y, largura, altura]
         "mana_region": None,
+        # Ponto [x, y] (coordenada absoluta de tela) onde o overlay mostra o
+        # ultimo valor de mana lido - so visual, independente da regiao de
+        # OCR em si (pode ficar num canto vazio da tela, longe da regiao).
+        "mana_display_point": None,
         # Limite de seguranca: abaixo disso o ciclo pausa sozinho
         "min_mana": 300,
         # Permite rodar sem OCR (usuario assume o controle do limite)
@@ -139,8 +143,6 @@ DEFAULTS: dict[str, Any] = {
         "delay_min": 1.5,
         "delay_max": 2.5,
         "click_jitter": 2,
-        # Caminho do executavel do Tesseract (deixe vazio se estiver no PATH)
-        "tesseract_cmd": "",
         # "craft" (cria runas) ou "mana_training" (so conjura, sem item) -
         # mutuamente exclusivos, mesma thread/slot de execucao.
         "mode": "craft",
