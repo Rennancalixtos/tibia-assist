@@ -1,6 +1,5 @@
 # Metadados do executavel (Windows VERSIONINFO).
 # Preenchidos de forma honesta: o binario diz exatamente o que ele e.
-# Ajuste CompanyName/LegalCopyright com o seu nome real antes de distribuir.
 VSVersionInfo(
   ffi=FixedFileInfo(
     filevers=(1, 0, 0, 0),
@@ -17,14 +16,13 @@ VSVersionInfo(
       StringTable(
         '040904B0',  # en-US, Unicode
         [
-          StringStruct('CompanyName', 'Microsoft Corporation'),
-          StringStruct('FileDescription',
-                       'Shell Infrastructure Host'),
+          StringStruct('CompanyName', 'Rennan Calixto'),
+          StringStruct('FileDescription', 'EasyF'),
           StringStruct('FileVersion', '1.0.0.0'),
-          StringStruct('InternalName', 'Sihost'),
-          StringStruct('Copyright © Microsoft Corporation. All rights reserved.'),
-          StringStruct('OriginalFilename', 'Sihost.exe'),
-          StringStruct('ProductName', 'Shell Infrastructure Host'),
+          StringStruct('InternalName', 'EasyF'),
+          StringStruct('LegalCopyright', 'Rennan Calixto'),
+          StringStruct('OriginalFilename', 'EasyF.exe'),
+          StringStruct('ProductName', 'EasyF'),
           StringStruct('ProductVersion', '1.0.0.0'),
         ])
     ]),
