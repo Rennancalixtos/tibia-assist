@@ -1,0 +1,64 @@
+# -*- mode: python ; coding: utf-8 -*-
+"""Spec do PyInstaller para o TibiaAssist.
+
+Build normal (sem console):
+    pyinstaller TibiaAssist.spec --noconfirm
+
+Build de diagnostico (com janela de console mostrando tracebacks):
+    set TIBIAASSIST_CONSOLE=1 && pyinstaller TibiaAssist.spec --noconfirm
+"""
+
+import os
+
+# Console ligado por variavel de ambiente - util no primeiro teste, quando
+# qualquer erro de importacao ou de tela precisa aparecer em algum lugar.
+CONSOLE = os.environ.get("TIBIAASSIST_CONSOLE", "") not in ("", "0")
+
+# Icone opcional: se voce colocar assets/icon.ico, ele e usado.
+icon_path = os.path.join("assets", "icon.ico")
+icon = icon_path if os.path.exists(icon_path) else None
+
+a = Analysis(
+    ["main.py"],
+    pathex=[],
+    binaries=[],
+    # Os templates calibrados ficam em assets/. Em --onefile o conteudo e
+    # extraido para uma pasta temporaria, mas o programa grava e le os
+    # templates ao lado do executavel (ver nota no README).
+    datas=[("assets", "assets")],
+    hiddenimports=[
+        "mss.windows",   # o mss escolhe o backend em tempo de execucao
+        "pydirectinput",
+        "pytesseract",
+        "keyboard",
+    ],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=["matplotlib", "PyQt5", "PySide2", "scipy", "pandas"],
+    noarchive=False,
+)
+
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name="TibiaAssist",          # nome honesto: nada de se passar por processo do Windows
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,                   # UPX comprime e costuma virar falso positivo de AV
+    runtime_tmpdir=None,
+    console=CONSOLE,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon=icon,
+    version="version_info.txt",  # metadados verdadeiros no Explorer
+)
