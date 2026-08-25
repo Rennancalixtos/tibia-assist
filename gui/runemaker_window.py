@@ -7,7 +7,7 @@ from tkinter import messagebox, ttk
 
 from core.screen_capture import ScreenCapture, is_valid_region
 from core.tesseract_installer import _bundled_installer_path, find_tesseract, install_tesseract
-from functions.rune_maker import OCRUnavailable, RuneMakerWorker, read_number
+from functions.rune_maker import OCRUnavailable, RuneMakerWorker, configure_tesseract, read_number
 from gui.widgets import LogPanel, ScrollableFrame, add_field, parse_float, parse_int, region_text
 
 
@@ -130,10 +130,7 @@ class RuneMakerWindow(ttk.Frame):
     def test_ocr(self) -> None:
         """Le a mana uma unica vez e mostra o que o Tesseract entendeu."""
         self.save_config()
-        import pytesseract  # import tardio: so e necessario neste teste
-
-        if self.cfg.get("tesseract_cmd"):
-            pytesseract.pytesseract.tesseract_cmd = self.cfg["tesseract_cmd"]
+        configure_tesseract(self.cfg.get("tesseract_cmd"))
 
         region = self.cfg.get("mana_region")
         if not is_valid_region(region):
