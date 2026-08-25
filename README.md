@@ -92,6 +92,16 @@ seu (use o campo "Quantidade de runas" para limitar).
 python main.py
 ```
 
+> **Rode como Administrador se o cliente do jogo tambem rodar como Administrador.**
+> O Windows usa UIPI (User Interface Privilege Isolation) para bloquear
+> silenciosamente cliques e teclas sinteticos vindos de um processo de
+> privilegio mais baixo quando o alvo e uma janela elevada - o cursor se move
+> normalmente (e um estado global do sistema), mas os cliques simplesmente nao
+> tem efeito, sem nenhum erro visivel. Se os cliques nao estiverem funcionando
+> mas a deteccao e o movimento do mouse estiverem corretos, esse e o primeiro
+> lugar para verificar. O `.exe` gerado pelo `build.bat` ja pede elevacao
+> automaticamente ao abrir.
+
 ---
 
 ## Como configurar
@@ -216,7 +226,8 @@ onde seu usuário tenha permissão de escrita (evite `C:\Program Files`).
 |---|---|
 | "Nenhuma tile de água encontrada" | Recalibre a cor com um recorte só de água; reduza `Área mínima`; confira se a região selecionada é a certa |
 | Detecta grama/parede como água | Aumente `Área mínima`, recalibre com um recorte mais puro ou use o modo template |
-| Cliques não têm efeito no jogo | O cliente pode ignorar input sintético em modo tela cheia — tente janela/janela sem borda e execute o programa como administrador |
+| Mouse se move certinho mas o clique não tem efeito | O cliente do jogo provavelmente roda como Administrador. Execute o TibiaAssist (ou o `.exe`) também como Administrador — Windows bloqueia silenciosamente input sintético de um processo de privilégio mais baixo chegando numa janela elevada (UIPI) |
+| Cliques não têm efeito no jogo (mesmo nível de privilégio) | O cliente pode ignorar input sintético em modo tela cheia — tente janela/janela sem borda |
 | Template para de funcionar | Zoom ou resolução mudaram; capture o template de novo |
 | OCR lê valor errado ou nada | Selecione um retângulo mais justo, só com o número; confira o caminho do Tesseract em *Testar OCR* |
 | Hotkeys não respondem | Execute como administrador (Windows) / root (Linux) ou use os botões da interface |

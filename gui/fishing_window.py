@@ -9,7 +9,7 @@ from tkinter import messagebox, ttk
 from core.config import ASSETS_DIR
 from core.screen_capture import ScreenCapture, is_valid_region, save_image
 from functions.auto_fishing import AutoFishingWorker, sample_hsv_range
-from gui.widgets import LogPanel, add_field, parse_float, parse_int, region_text
+from gui.widgets import LogPanel, ScrollableFrame, add_field, parse_float, parse_int, region_text
 
 
 class FishingWindow(ttk.Frame):
@@ -33,16 +33,38 @@ class FishingWindow(ttk.Frame):
         self.var_max_casts = tk.StringVar(value=str(self.cfg.get("max_casts")))
         self.var_randomize = tk.BooleanVar(value=bool(self.cfg.get("randomize_target", True)))
         self.var_region = tk.StringVar(value=region_text(self.cfg.get("region")))
+        self.var_rod_slot = tk.StringVar(value=region_text(self.cfg.get("rod_slot")))
+        self.var_break_enabled = tk.BooleanVar(value=bool(self.cfg.get("break_enabled", True)))
+        self.var_break_interval_min = tk.StringVar(value=str(self.cfg.get("break_interval_min", 60)))
+        self.var_break_interval_max = tk.StringVar(value=str(self.cfg.get("break_interval_max", 300)))
+        self.var_break_duration_min = tk.StringVar(value=str(self.cfg.get("break_duration_min", 15)))
+        self.var_break_duration_max = tk.StringVar(value=str(self.cfg.get("break_duration_max", 120)))
         self.var_status = tk.StringVar(value="parado")
         self.var_counter = tk.StringVar(value="0")
+
+        scroll = ScrollableFrame(self)
+        scroll.pack(fill="both", expand=True)
+        self.body = scroll.body
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
 
         self._build()
 
     # ---------------------------------------------------------------- layout
     def _build(self) -> None:
+        body = self.body
+        # Vara de pescar ------------------------------------------------------
+        box_rod = ttk.LabelFrame(body, text="1. Vara de pescar")
+        box_rod.grid(row=0, column=0, sticky="ew", pady=4)
+        box_rod.columnconfigure(1, weight=1)
+        ttk.Button(box_rod, text="Selecionar posicao da vara...", command=self.pick_rod_slot).grid(
+            row=0, column=0, padx=4, pady=6
+        )
+        ttk.Label(box_rod, textvariable=self.var_rod_slot).grid(row=0, column=1, sticky="w")
+
         # Regiao monitorada -------------------------------------------------
-        box_region = ttk.LabelFrame(self, text="1. Regiao monitorada")
-        box_region.grid(row=0, column=0, sticky="ew", pady=4)
+        box_region = ttk.LabelFrame(body, text="2. Regiao monitorada (lago)")
+        box_region.grid(row=1, column=0, sticky="ew", pady=4)
         box_region.columnconfigure(1, weight=1)
         ttk.Button(box_region, text="Selecionar regiao...", command=self.pick_region).grid(
             row=0, column=0, padx=4, pady=6
@@ -50,8 +72,8 @@ class FishingWindow(ttk.Frame):
         ttk.Label(box_region, textvariable=self.var_region).grid(row=0, column=1, sticky="w")
 
         # Deteccao ----------------------------------------------------------
-        box_detect = ttk.LabelFrame(self, text="2. Deteccao de agua")
-        box_detect.grid(row=1, column=0, sticky="ew", pady=4)
+        box_detect = ttk.LabelFrame(body, text="3. Deteccao de agua")
+        box_detect.grid(row=2, column=0, sticky="ew", pady=4)
 
         ttk.Label(box_detect, text="Modo").grid(row=0, column=0, sticky="w", padx=4, pady=3)
         combo = ttk.Combobox(
@@ -84,10 +106,10 @@ class FishingWindow(ttk.Frame):
         )
 
         # Clique e ritmo ----------------------------------------------------
-        box_click = ttk.LabelFrame(self, text="3. Clique e ritmo")
-        box_click.grid(row=2, column=0, sticky="ew", pady=4)
+        box_click = ttk.LabelFrame(body, text="4. Clique e ritmo")
+        box_click.grid(row=3, column=0, sticky="ew", pady=4)
 
-        ttk.Label(box_click, text="Botao do mouse").grid(row=0, column=0, sticky="w", padx=4, pady=3)
+        ttk.Label(box_click, text="Botao na agua").grid(row=0, column=0, sticky="w", padx=4, pady=3)
         ttk.Combobox(
             box_click,
             textvariable=self.var_button,
@@ -95,6 +117,9 @@ class FishingWindow(ttk.Frame):
             state="readonly",
             width=10,
         ).grid(row=0, column=1, sticky="w", padx=4)
+        ttk.Label(
+            box_click, text="a vara (aba 1) sempre abre com o botao direito", foreground="#666"
+        ).grid(row=0, column=2, sticky="w", padx=4)
 
         add_field(box_click, 1, "Delay minimo (s)", self.var_delay_min, 8, "ex: 1.8")
         add_field(box_click, 2, "Delay maximo (s)", self.var_delay_max, 8, "ex: 3.2")
@@ -106,9 +131,28 @@ class FishingWindow(ttk.Frame):
             variable=self.var_randomize,
         ).grid(row=5, column=0, columnspan=3, sticky="w", padx=4, pady=3)
 
+        # Pausas periodicas ---------------------------------------------------
+        box_break = ttk.LabelFrame(body, text="5. Pausas periodicas (descanso)")
+        box_break.grid(row=4, column=0, sticky="ew", pady=4)
+        ttk.Checkbutton(
+            box_break, text="Ativar pausas periodicas", variable=self.var_break_enabled
+        ).grid(row=0, column=0, columnspan=3, sticky="w", padx=4, pady=3)
+        add_field(
+            box_break, 1, "Pesca no minimo (s)", self.var_break_interval_min, 8, "antes de considerar pausa"
+        )
+        add_field(
+            box_break, 2, "Pesca no maximo (s)", self.var_break_interval_max, 8, "ex: 300 = ate 5 min"
+        )
+        add_field(
+            box_break, 3, "Pausa minima (s)", self.var_break_duration_min, 8, "duracao minima do descanso"
+        )
+        add_field(
+            box_break, 4, "Pausa maxima (s)", self.var_break_duration_max, 8, "ex: 120 = ate 2 min"
+        )
+
         # Controles ---------------------------------------------------------
-        box_run = ttk.LabelFrame(self, text="4. Execucao")
-        box_run.grid(row=3, column=0, sticky="ew", pady=4)
+        box_run = ttk.LabelFrame(body, text="6. Execucao")
+        box_run.grid(row=5, column=0, sticky="ew", pady=4)
         self.btn_start = ttk.Button(box_run, text="Iniciar", command=self.start)
         self.btn_start.grid(row=0, column=0, padx=4, pady=6)
         self.btn_pause = ttk.Button(box_run, text="Pausar/Retomar", command=self.toggle_pause, state="disabled")
@@ -127,13 +171,20 @@ class FishingWindow(ttk.Frame):
         )
 
         # Log ---------------------------------------------------------------
-        self.log_panel = LogPanel(self, title="Log", height=9)
-        self.log_panel.grid(row=4, column=0, sticky="nsew", pady=4)
+        self.log_panel = LogPanel(body, title="Log", height=9)
+        self.log_panel.grid(row=6, column=0, sticky="nsew", pady=4)
 
-        self.columnconfigure(0, weight=1)
-        self.rowconfigure(4, weight=1)
+        body.columnconfigure(0, weight=1)
 
     # ------------------------------------------------------------ calibracao
+    def pick_rod_slot(self) -> None:
+        point = self.app.select_point("Clique na posicao da VARA DE PESCAR  -  ESC cancela")
+        if point:
+            self.cfg["rod_slot"] = list(point)
+            self.var_rod_slot.set(region_text(point))
+            self.app.config_store.save()
+            self.log(f"Posicao da vara definida: {region_text(point)}")
+
     def pick_region(self) -> None:
         region = self.app.select_region("Arraste sobre a area de pesca  -  ESC cancela")
         if region:
@@ -218,11 +269,19 @@ class FishingWindow(ttk.Frame):
         self.cfg["click_jitter"] = parse_int(self.var_jitter.get(), 2)
         self.cfg["max_casts"] = parse_int(self.var_max_casts.get(), 0)
         self.cfg["randomize_target"] = bool(self.var_randomize.get())
+        self.cfg["break_enabled"] = bool(self.var_break_enabled.get())
+        self.cfg["break_interval_min"] = parse_int(self.var_break_interval_min.get(), 30)
+        self.cfg["break_interval_max"] = parse_int(self.var_break_interval_max.get(), 300)
+        self.cfg["break_duration_min"] = parse_int(self.var_break_duration_min.get(), 10)
+        self.cfg["break_duration_max"] = parse_int(self.var_break_duration_max.get(), 120)
         self.app.config_store.save()
 
     def start(self) -> None:
         self.save_config()
         cfg = self.worker_config()
+        if not self.cfg.get("rod_slot"):
+            messagebox.showwarning("AutoFishing", "Selecione a posicao da vara de pescar primeiro.")
+            return
         if not is_valid_region(cfg.get("region")):
             messagebox.showwarning("AutoFishing", "Selecione a regiao monitorada primeiro.")
             return

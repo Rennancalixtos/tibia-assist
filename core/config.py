@@ -40,6 +40,8 @@ DEFAULTS: dict[str, Any] = {
         "enabled": True,  # permite desligar o hook global de teclado
     },
     "fishing": {
+        # Coordenada absoluta [x, y] do slot da vara de pescar na backpack
+        "rod_slot": None,
         # Regiao monitorada na tela: [x, y, largura, altura] (coordenadas absolutas)
         "region": None,
         # "hsv" (deteccao por cor) ou "template" (cv2.matchTemplate)
@@ -52,8 +54,8 @@ DEFAULTS: dict[str, Any] = {
         # Template salvo em assets/ (usado quando detection_mode == "template")
         "template_file": "water_template.png",
         "template_threshold": 0.80,
-        # Clique usado para "usar a vara na agua"
-        "mouse_button": "right",
+        # Clique usado para aplicar a vara (ja aberta com o botao direito) na agua
+        "mouse_button": "left",
         # Intervalo aleatorio entre um lance e outro (segundos)
         "delay_min": 1.8,
         "delay_max": 3.2,
@@ -63,22 +65,27 @@ DEFAULTS: dict[str, Any] = {
         "randomize_target": True,
         # Limite opcional de lances na sessao (0 = ilimitado)
         "max_casts": 0,
+        # Pausas periodicas para simular descanso humano
+        "break_enabled": True,
+        # Pesca por um tempo aleatorio de ate 5 min antes de cada pausa
+        "break_interval_min": 30,
+        "break_interval_max": 300,
+        # Cada pausa dura um periodo aleatorio de ate 2 min
+        "break_duration_min": 10,
+        "break_duration_max": 120,
     },
     "runemaker": {
         # Tecla de atalho da magia de criar runa configurada dentro do jogo
         "spell_hotkey": "f2",
         # Coordenada absoluta [x, y] do slot de blank runes na backpack
         "blank_slot": None,
-        # Quantidade a criar (0 = criar ate acabar soul/mana ou ate o usuario parar)
+        # Quantidade a criar (0 = criar ate acabar mana ou ate o usuario parar)
         "amount": 0,
-        # Regioes de OCR: [x, y, largura, altura]
-        "soul_region": None,
+        # Regiao de OCR: [x, y, largura, altura]
         "mana_region": None,
-        # Limites de seguranca: abaixo disso o ciclo pausa sozinho
-        "min_soul": 5,
+        # Limite de seguranca: abaixo disso o ciclo pausa sozinho
         "min_mana": 300,
-        # Permite rodar sem OCR (usuario assume o controle dos limites)
-        "check_soul": True,
+        # Permite rodar sem OCR (usuario assume o controle do limite)
         "check_mana": True,
         # Intervalo aleatorio entre criacoes (segundos) - respeitar o cooldown real
         "delay_min": 1.5,

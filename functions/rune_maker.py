@@ -1,8 +1,8 @@
 """RuneMaker - cria runas em sequencia clicando na blank rune e usando a magia.
 
 Fluxo de cada ciclo:
-    1. le soul points e mana por OCR (Tesseract) nas regioes configuradas
-    2. se algum estiver abaixo do minimo, pausa sozinho (evita spam sem soul)
+    1. le mana por OCR (Tesseract) na regiao configurada
+    2. se estiver abaixo do minimo, pausa sozinho (evita spam sem mana)
     3. clica no slot da blank rune e pressiona a hotkey da magia
     4. espera um intervalo aleatorio (>= cooldown real da magia) e repete
 
@@ -57,7 +57,7 @@ def read_number(frame: np.ndarray) -> int | None:
     if pytesseract is None:
         raise OCRUnavailable(
             "pytesseract nao instalado. Instale-o e o Tesseract OCR, "
-            "ou desmarque as verificacoes de soul/mana."
+            "ou desmarque a verificacao de mana."
         )
     processed = preprocess_for_ocr(frame)
     try:
@@ -84,11 +84,8 @@ class RuneMakerWorker(BaseWorker):
         if not self.spell_hotkey:
             raise ValueError("Tecla de atalho da magia nao configurada.")
 
-        self.check_soul = bool(self.config.get("check_soul", True))
         self.check_mana = bool(self.config.get("check_mana", True))
 
-        if self.check_soul and not is_valid_region(self.config.get("soul_region")):
-            raise ValueError("Regiao de OCR do soul nao configurada.")
         if self.check_mana and not is_valid_region(self.config.get("mana_region")):
             raise ValueError("Regiao de OCR da mana nao configurada.")
 
@@ -117,16 +114,7 @@ class RuneMakerWorker(BaseWorker):
         return read_number(frame)
 
     def resources_ok(self) -> bool:
-        """True se soul e mana estao acima dos minimos configurados."""
-        if self.check_soul:
-            soul = self.read_status("soul")
-            if soul is None:
-                self.warn_once("Nao consegui ler o soul via OCR. Verifique a regiao configurada.")
-                return False
-            if soul < int(self.config.get("min_soul", 5)):
-                self.warn_once(f"Soul insuficiente ({soul}). Aguardando regenerar...")
-                return False
-
+        """True se a mana esta acima do minimo configurado."""
         if self.check_mana:
             mana = self.read_status("mana")
             if mana is None:

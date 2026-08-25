@@ -7,7 +7,7 @@ from tkinter import messagebox, ttk
 
 from core.screen_capture import ScreenCapture, is_valid_region
 from functions.rune_maker import OCRUnavailable, RuneMakerWorker, read_number
-from gui.widgets import LogPanel, add_field, parse_float, parse_int, region_text
+from gui.widgets import LogPanel, ScrollableFrame, add_field, parse_float, parse_int, region_text
 
 
 class RuneMakerWindow(ttk.Frame):
@@ -23,26 +23,30 @@ class RuneMakerWindow(ttk.Frame):
         self.var_delay_min = tk.StringVar(value=str(self.cfg.get("delay_min")))
         self.var_delay_max = tk.StringVar(value=str(self.cfg.get("delay_max")))
         self.var_jitter = tk.StringVar(value=str(self.cfg.get("click_jitter")))
-        self.var_min_soul = tk.StringVar(value=str(self.cfg.get("min_soul")))
         self.var_min_mana = tk.StringVar(value=str(self.cfg.get("min_mana")))
-        self.var_check_soul = tk.BooleanVar(value=bool(self.cfg.get("check_soul", True)))
         self.var_check_mana = tk.BooleanVar(value=bool(self.cfg.get("check_mana", True)))
         self.var_tesseract = tk.StringVar(value=self.cfg.get("tesseract_cmd", ""))
         self.var_slot = tk.StringVar(value=region_text(self.cfg.get("blank_slot")))
-        self.var_soul_region = tk.StringVar(value=region_text(self.cfg.get("soul_region")))
         self.var_mana_region = tk.StringVar(value=region_text(self.cfg.get("mana_region")))
         self.var_status = tk.StringVar(value="parado")
         self.var_counter = tk.StringVar(value="0")
+
+        scroll = ScrollableFrame(self)
+        scroll.pack(fill="both", expand=True)
+        self.body = scroll.body
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
 
         self._build()
 
     # ---------------------------------------------------------------- layout
     def _build(self) -> None:
+        body = self.body
         # Magia e alvo ------------------------------------------------------
-        box_spell = ttk.LabelFrame(self, text="1. Magia e blank runes")
+        box_spell = ttk.LabelFrame(body, text="1. Magia e blank runes")
         box_spell.grid(row=0, column=0, sticky="ew", pady=4)
         add_field(box_spell, 0, "Tecla da magia", self.var_spell, 8, "hotkey configurada no jogo (ex: f2)")
-        add_field(box_spell, 1, "Quantidade de runas", self.var_amount, 8, "0 = ate acabar soul/mana")
+        add_field(box_spell, 1, "Quantidade de runas", self.var_amount, 8, "0 = ate acabar a mana")
 
         ttk.Button(box_spell, text="Selecionar slot da blank rune...", command=self.pick_slot).grid(
             row=2, column=0, padx=4, pady=6, sticky="w"
@@ -50,42 +54,33 @@ class RuneMakerWindow(ttk.Frame):
         ttk.Label(box_spell, textvariable=self.var_slot).grid(row=2, column=1, columnspan=2, sticky="w")
 
         # OCR ---------------------------------------------------------------
-        box_ocr = ttk.LabelFrame(self, text="2. Limites de seguranca (OCR)")
+        box_ocr = ttk.LabelFrame(body, text="2. Limites de seguranca (OCR)")
         box_ocr.grid(row=1, column=0, sticky="ew", pady=4)
 
-        ttk.Checkbutton(box_ocr, text="Verificar soul points", variable=self.var_check_soul).grid(
+        ttk.Checkbutton(box_ocr, text="Verificar mana", variable=self.var_check_mana).grid(
             row=0, column=0, sticky="w", padx=4, pady=3
         )
-        ttk.Button(box_ocr, text="Regiao do soul...", command=lambda: self.pick_ocr_region("soul")).grid(
+        ttk.Button(box_ocr, text="Regiao da mana...", command=lambda: self.pick_ocr_region("mana")).grid(
             row=0, column=1, padx=4
         )
-        ttk.Label(box_ocr, textvariable=self.var_soul_region).grid(row=0, column=2, sticky="w", padx=4)
+        ttk.Label(box_ocr, textvariable=self.var_mana_region).grid(row=0, column=2, sticky="w", padx=4)
 
-        ttk.Checkbutton(box_ocr, text="Verificar mana", variable=self.var_check_mana).grid(
-            row=1, column=0, sticky="w", padx=4, pady=3
-        )
-        ttk.Button(box_ocr, text="Regiao da mana...", command=lambda: self.pick_ocr_region("mana")).grid(
-            row=1, column=1, padx=4
-        )
-        ttk.Label(box_ocr, textvariable=self.var_mana_region).grid(row=1, column=2, sticky="w", padx=4)
-
-        add_field(box_ocr, 2, "Soul minimo", self.var_min_soul, 8, "pausa abaixo disso")
-        add_field(box_ocr, 3, "Mana minima", self.var_min_mana, 8, "pausa abaixo disso")
-        add_field(box_ocr, 4, "Caminho do Tesseract", self.var_tesseract, 36, "vazio = usar o PATH")
+        add_field(box_ocr, 1, "Mana minima", self.var_min_mana, 8, "pausa abaixo disso")
+        add_field(box_ocr, 2, "Caminho do Tesseract", self.var_tesseract, 36, "vazio = usar o PATH")
 
         ttk.Button(box_ocr, text="Testar OCR", command=self.test_ocr).grid(
-            row=5, column=0, padx=4, pady=6, sticky="w"
+            row=3, column=0, padx=4, pady=6, sticky="w"
         )
 
         # Ritmo -------------------------------------------------------------
-        box_rate = ttk.LabelFrame(self, text="3. Ritmo")
+        box_rate = ttk.LabelFrame(body, text="3. Ritmo")
         box_rate.grid(row=2, column=0, sticky="ew", pady=4)
         add_field(box_rate, 0, "Delay minimo (s)", self.var_delay_min, 8, ">= cooldown real da magia")
         add_field(box_rate, 1, "Delay maximo (s)", self.var_delay_max, 8, "ex: 2.5")
         add_field(box_rate, 2, "Variacao do clique (px)", self.var_jitter, 8, "+/- pixels")
 
         # Controles ---------------------------------------------------------
-        box_run = ttk.LabelFrame(self, text="4. Execucao")
+        box_run = ttk.LabelFrame(body, text="4. Execucao")
         box_run.grid(row=3, column=0, sticky="ew", pady=4)
         self.btn_start = ttk.Button(box_run, text="Iniciar", command=self.start)
         self.btn_start.grid(row=0, column=0, padx=4, pady=6)
@@ -104,11 +99,10 @@ class RuneMakerWindow(ttk.Frame):
             row=1, column=3, sticky="w"
         )
 
-        self.log_panel = LogPanel(self, title="Log", height=9)
+        self.log_panel = LogPanel(body, title="Log", height=9)
         self.log_panel.grid(row=4, column=0, sticky="nsew", pady=4)
 
-        self.columnconfigure(0, weight=1)
-        self.rowconfigure(4, weight=1)
+        body.columnconfigure(0, weight=1)
 
     # --------------------------------------------------------------- selecao
     def pick_slot(self) -> None:
@@ -120,35 +114,34 @@ class RuneMakerWindow(ttk.Frame):
             self.log(f"Slot da blank rune definido: {region_text(point)}")
 
     def pick_ocr_region(self, key: str) -> None:
-        label = "SOUL" if key == "soul" else "MANA"
+        label = "MANA"
         region = self.app.select_region(f"Selecione o numero de {label} na barra de status  -  ESC cancela")
         if not region:
             return
         self.cfg[f"{key}_region"] = region
-        (self.var_soul_region if key == "soul" else self.var_mana_region).set(region_text(region))
+        self.var_mana_region.set(region_text(region))
         self.app.config_store.save()
         self.log(f"Regiao de {label} definida: {region_text(region)}")
 
     def test_ocr(self) -> None:
-        """Le soul e mana uma unica vez e mostra o que o Tesseract entendeu."""
+        """Le a mana uma unica vez e mostra o que o Tesseract entendeu."""
         self.save_config()
         import pytesseract  # import tardio: so e necessario neste teste
 
         if self.cfg.get("tesseract_cmd"):
             pytesseract.pytesseract.tesseract_cmd = self.cfg["tesseract_cmd"]
 
-        for key in ("soul", "mana"):
-            region = self.cfg.get(f"{key}_region")
-            if not is_valid_region(region):
-                self.log(f"Regiao de {key} nao configurada.")
-                continue
-            try:
-                with ScreenCapture() as cap:
-                    value = read_number(cap.grab(region))
-            except OCRUnavailable as exc:
-                messagebox.showerror("RuneMaker", str(exc))
-                return
-            self.log(f"OCR {key}: {value if value is not None else 'nao reconhecido'}")
+        region = self.cfg.get("mana_region")
+        if not is_valid_region(region):
+            self.log("Regiao de mana nao configurada.")
+            return
+        try:
+            with ScreenCapture() as cap:
+                value = read_number(cap.grab(region))
+        except OCRUnavailable as exc:
+            messagebox.showerror("RuneMaker", str(exc))
+            return
+        self.log(f"OCR mana: {value if value is not None else 'nao reconhecido'}")
 
     # -------------------------------------------------------------- controles
     def save_config(self) -> None:
@@ -157,9 +150,7 @@ class RuneMakerWindow(ttk.Frame):
         self.cfg["delay_min"] = parse_float(self.var_delay_min.get(), 1.5)
         self.cfg["delay_max"] = parse_float(self.var_delay_max.get(), 2.5)
         self.cfg["click_jitter"] = parse_int(self.var_jitter.get(), 2)
-        self.cfg["min_soul"] = parse_int(self.var_min_soul.get(), 5)
         self.cfg["min_mana"] = parse_int(self.var_min_mana.get(), 300)
-        self.cfg["check_soul"] = bool(self.var_check_soul.get())
         self.cfg["check_mana"] = bool(self.var_check_mana.get())
         self.cfg["tesseract_cmd"] = self.var_tesseract.get().strip()
         self.app.config_store.save()

@@ -61,4 +61,11 @@ exe = EXE(
     entitlements_file=None,
     icon=icon,
     version="version_info.txt",  # metadados verdadeiros no Explorer
+    # Muitos clientes (ex: OTClient/derivados) rodam elevados. O Windows usa
+    # UIPI para bloquear silenciosamente cliques/teclas sinteticos vindos de
+    # um processo de privilegio mais baixo chegando numa janela elevada -
+    # o cursor se move (estado global do SO), mas o clique nao tem efeito.
+    # uac_admin embute um manifest pedindo elevacao ao abrir o .exe, para o
+    # TibiaAssist sempre rodar no mesmo nivel do cliente do jogo.
+    uac_admin=True,
 )

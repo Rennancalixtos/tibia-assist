@@ -12,6 +12,7 @@ Tudo baseado em pixels da tela + input simulado. Nenhuma leitura de memoria.
 from __future__ import annotations
 
 import random
+import time
 
 import cv2
 import numpy as np
@@ -134,6 +135,10 @@ class AutoFishingWorker(BaseWorker):
         self.mode = self.config.get("detection_mode", "hsv")
         self.template = None
 
+        self.rod_slot = self.config.get("rod_slot")
+        if not (isinstance(self.rod_slot, (list, tuple)) and len(self.rod_slot) == 2):
+            raise ValueError("Slot da vara de pescar nao configurado.")
+
         if not is_valid_region(self.region):
             raise ValueError("Regiao de pesca nao configurada.")
 
@@ -145,10 +150,37 @@ class AutoFishingWorker(BaseWorker):
                     "Template de agua nao encontrado. Calibre um template ou use o modo HSV."
                 )
 
+        self.break_enabled = bool(self.config.get("break_enabled", True))
+        self._schedule_next_break()
+
         self.log(
             f"AutoFishing iniciado (modo={self.mode}, regiao={self.region}, "
-            f"backend={InputSimulator.backend_name()})."
+            f"vara={tuple(self.rod_slot)}, backend={InputSimulator.backend_name()})."
         )
+
+    # ------------------------------------------------------------- pausas
+    def _schedule_next_break(self) -> None:
+        """Sorteia daqui a quanto tempo a proxima pausa de descanso acontece."""
+        interval = InputSimulator.random_delay(
+            self.config.get("break_interval_min", 60), self.config.get("break_interval_max", 300)
+        )
+        self._next_break_at = time.monotonic() + interval
+
+    def maybe_take_break(self) -> bool:
+        """Se chegou a hora, para de pescar por um periodo aleatorio.
+
+        Devolve False se a rotina foi parada durante a pausa.
+        """
+        if not self.break_enabled or time.monotonic() < self._next_break_at:
+            return True
+        duration = InputSimulator.random_delay(
+            self.config.get("break_duration_min", 15), self.config.get("break_duration_max", 120)
+        )
+        self.log(f"Pausa para descanso: {duration:.0f}s.")
+        if not self.sleep(duration):
+            return False
+        self._schedule_next_break()
+        return True
 
     def teardown(self) -> None:
         capture = getattr(self, "capture", None)
@@ -174,9 +206,13 @@ class AutoFishingWorker(BaseWorker):
         jitter = int(self.config.get("click_jitter", 2))
         randomize = bool(self.config.get("randomize_target", True))
         rx, ry = int(self.region[0]), int(self.region[1])
+        rod_x, rod_y = int(self.rod_slot[0]), int(self.rod_slot[1])
 
         while not self.stopped:
             if not self.wait_while_paused():
+                return
+
+            if not self.maybe_take_break():
                 return
 
             frame = self.capture.grab(self.region)
@@ -193,14 +229,20 @@ class AutoFishingWorker(BaseWorker):
             pool = targets[: min(5, len(targets))]
             cx, cy, _score = random.choice(pool) if randomize else targets[0]
 
+            # Abre a vara com o botao direito (equivalente a "usar" o item) antes
+            # de aplica-la na agua com o esquerdo - mecanica de "use with" do Tibia.
+            self.mouse.click(rod_x, rod_y, button="right", jitter=jitter)
+            if not self.sleep(InputSimulator.random_delay(0.10, 0.25)):
+                return
+
             # Coordenada relativa -> absoluta na tela
             abs_x, abs_y = rx + cx, ry + cy
             clicked_x, clicked_y = self.mouse.click(abs_x, abs_y, button=button, jitter=jitter)
 
             self.bump_counter()
             self.log(
-                f"Lance #{self.counter} em ({clicked_x}, {clicked_y}) "
-                f"- {len(targets)} tile(s) de agua detectada(s)."
+                f"Vara aberta em ({rod_x}, {rod_y}) -> lance #{self.counter} em "
+                f"({clicked_x}, {clicked_y}) - {len(targets)} tile(s) de agua detectada(s)."
             )
 
             if max_casts and self.counter >= max_casts:
