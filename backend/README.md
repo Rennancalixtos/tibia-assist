@@ -16,11 +16,18 @@ esta pagina web para login, apenas para cadastro + inicio do pagamento).
    habilitado com login por senha (é o padrao). Nao é necessario configurar
    templates de confirmacao de email: o backend cria usuarios com
    `email_confirm: true`, ou seja, sem etapa de confirmacao por email.
-3. Em **Project Settings > API**, anote:
+3. Em **Project Settings > API Keys**, anote:
    - `Project URL` -> variavel `SUPABASE_URL`
-   - `anon public` key -> variavel `SUPABASE_ANON_KEY`
-   - `service_role` key -> variavel `SUPABASE_SERVICE_ROLE_KEY` (mantenha em
-     segredo, nunca exponha no frontend)
+   - Se o painel mostrar uma aba **"Legacy API Keys"** (`anon` / `service_role`
+     no formato JWT antigo), use ela - e o formato mais testado com a
+     biblioteca `@supabase/supabase-js` usada aqui, inclusive para a API
+     admin (`auth.admin.createUser`, usada no cadastro). Caso contrario, use
+     as chaves novas (**Publishable key** no lugar de `anon`, **Secret key**
+     no lugar de `service_role`) - o formato novo, ainda nao testado neste
+     projeto.
+   - `anon` / **Publishable key** -> variavel `SUPABASE_ANON_KEY`
+   - `service_role` / **Secret key** -> variavel `SUPABASE_SERVICE_ROLE_KEY`
+     (mantenha em segredo, nunca exponha no frontend)
 4. Abra o **SQL Editor** do Supabase e execute o conteudo de
    `backend/supabase/schema.sql` para criar a tabela `licenses`, os indices,
    o trigger de `updated_at` e habilitar Row Level Security (sem nenhuma
