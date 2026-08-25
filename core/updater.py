@@ -60,19 +60,23 @@ def check_for_update(api_base_url: str, current_version: str) -> dict | None:
     return info
 
 
-def apply_update(api_base_url: str, update_info: dict) -> bool:
+def apply_update(api_base_url: str, update_info: dict, on_progress=None) -> bool:
     """Baixa o novo .exe e reinicia o programa com ele no lugar do atual.
 
     So funciona empacotado (PyInstaller/`sys.frozen`); rodando do
     codigo-fonte devolve False sem fazer nada, ja que nao ha .exe pra
     substituir. Quem chamar isso e receber True deve encerrar o processo
     atual imediatamente (o .exe em uso precisa ser liberado para a troca).
+
+    `on_progress(downloaded_bytes, total_bytes)`, se informado, e chamado a
+    cada pedaco baixado (`total_bytes` pode ser 0 se o servidor nao mandar
+    Content-Length).
     """
     if not getattr(sys, "frozen", False):
         return False
 
     asset_id = update_info.get("asset_id")
-    asset_name = update_info.get("asset_name") or "TibiaAssist.exe"
+    asset_name = update_info.get("asset_name") or "EasyF.exe"
     if not asset_id:
         return False
 
@@ -84,11 +88,16 @@ def apply_update(api_base_url: str, update_info: dict) -> bool:
     try:
         req = urllib.request.Request(f"{api_base_url}/api/update/download?asset_id={asset_id}")
         with urllib.request.urlopen(req, timeout=DOWNLOAD_TIMEOUT) as resp, open(new_exe, "wb") as fp:
+            total = int(resp.headers.get("Content-Length") or 0)
+            downloaded = 0
             while True:
                 chunk = resp.read(1024 * 256)
                 if not chunk:
                     break
                 fp.write(chunk)
+                downloaded += len(chunk)
+                if on_progress:
+                    on_progress(downloaded, total)
     except (urllib.error.URLError, TimeoutError, OSError, ValueError):
         try:
             os.remove(new_exe)

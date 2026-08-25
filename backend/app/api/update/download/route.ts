@@ -45,7 +45,7 @@ export async function GET(request: Request) {
   return new NextResponse(res.body, {
     headers: {
       "Content-Type": "application/octet-stream",
-      "Content-Disposition": 'attachment; filename="TibiaAssist.exe"',
+      "Content-Disposition": 'attachment; filename="EasyF.exe"',
     },
   });
 }

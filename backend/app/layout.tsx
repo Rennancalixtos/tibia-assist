@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "TibiaAssist",
-  description: "Cadastro e assinatura do TibiaAssist",
+  title: "EasyF",
+  description: "Cadastro e assinatura do EasyF",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

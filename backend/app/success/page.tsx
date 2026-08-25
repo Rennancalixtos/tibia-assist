@@ -88,7 +88,7 @@ function SuccessContent() {
         <>
           <h1 style={{ fontSize: 18, color: "#6bffa0" }}>Assinatura ativa!</h1>
           <p style={{ color: "#e7e7ea", fontSize: 14 }}>
-            Volte para o TibiaAssist e faca login com o email e senha que voce
+            Volte para o EasyF e faca login com o email e senha que voce
             cadastrou.
           </p>
         </>
@@ -99,7 +99,7 @@ function SuccessContent() {
           <h1 style={{ fontSize: 18, color: "#ff6b6b" }}>Ainda confirmando...</h1>
           <p style={{ color: "#8a8f9c", fontSize: 14 }}>
             Nao conseguimos confirmar sua assinatura ainda. Atualize esta
-            pagina em alguns instantes ou volte para o TibiaAssist e tente
+            pagina em alguns instantes ou volte para o EasyF e tente
             fazer login - a assinatura pode ja estar ativa.
           </p>
         </>

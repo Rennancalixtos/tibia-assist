@@ -131,7 +131,7 @@ export default function HomePage() {
 
   return (
     <div style={cardStyle}>
-      <h1 style={{ fontSize: 20, marginTop: 0, marginBottom: 16 }}>TibiaAssist</h1>
+      <h1 style={{ fontSize: 20, marginTop: 0, marginBottom: 16 }}>EasyF</h1>
 
       <div style={{ display: "flex", marginBottom: 20 }}>
         <button style={tabButtonStyle(tab === "cadastrar")} onClick={() => { setTab("cadastrar"); setMessage(null); }}>
@@ -145,7 +145,7 @@ export default function HomePage() {
       {tab === "cadastrar" ? (
         <form onSubmit={handleCadastrar}>
           <p style={{ color: "#8a8f9c", fontSize: 14, marginTop: 0 }}>
-            Crie sua conta e assine o TibiaAssist. Depois de assinar, use este
+            Crie sua conta e assine o EasyF. Depois de assinar, use este
             mesmo email e senha para entrar no aplicativo.
           </p>
           <input
@@ -173,7 +173,7 @@ export default function HomePage() {
         <form onSubmit={handleEntrar}>
           <p style={{ color: "#8a8f9c", fontSize: 14, marginTop: 0 }}>
             Use esta aba apenas para verificar sua conta/assinatura. O login
-            real e feito dentro do aplicativo TibiaAssist.
+            real e feito dentro do aplicativo EasyF.
           </p>
           <input
             style={inputStyle}

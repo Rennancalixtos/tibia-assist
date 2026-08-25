@@ -221,6 +221,26 @@ onde seu usuário tenha permissão de escrita (evite `C:\Program Files`).
 - É normal o Windows Defender ou o SmartScreen alertarem sobre um `.exe` novo e
   sem assinatura digital; isso vale para qualquer binário recém-compilado.
 
+### Publicando uma nova versão (auto-update)
+
+O app verifica atualização no boot (splash) contra releases do GitHub (via o
+backend na Vercel, ver `backend/README.md`). O build/publicação da release e
+automatico (`.github/workflows/release.yml`), mas **so dispara com uma tag**,
+nunca com um push comum em `main`/`dev`:
+
+1. Atualize `APP_VERSION` em `core/version.py` (ex: `"1.0.0"` -> `"1.1.0"`).
+   **Isso tem que vir antes do passo 2** - o auto-update compara a tag do
+   release com esse valor, ja embutido no `.exe`; esquecer de bumpar faz o
+   app recem-atualizado ficar tentando baixar a "mesma" versao pra sempre.
+2. Comite essa mudança e crie/envie a tag correspondente:
+   ```bash
+   git tag v1.1.0
+   git push origin v1.1.0
+   ```
+3. O GitHub Actions builda o `.exe` numa VM Windows e publica a Release com
+   ele anexado automaticamente - acompanhe em Actions no GitHub. Nenhum passo
+   manual de build/upload e necessario.
+
 ## Solução de problemas
 
 | Sintoma | O que verificar |

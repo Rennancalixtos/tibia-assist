@@ -1,4 +1,4 @@
-# Backend TibiaAssist (licenca via Supabase Auth + Stripe)
+# Backend EasyF (licenca via Supabase Auth + Stripe)
 
 Backend em Next.js 14 (App Router) responsavel por:
 
@@ -6,7 +6,7 @@ Backend em Next.js 14 (App Router) responsavel por:
 - Cobranca recorrente da assinatura (Stripe Checkout + Webhook).
 - Consulta do status da licenca (embutida nas respostas de login/refresh).
 
-O app desktop TibiaAssist chama este backend diretamente por HTTP (nao usa
+O app desktop EasyF chama este backend diretamente por HTTP (nao usa
 esta pagina web para login, apenas para cadastro + inicio do pagamento).
 
 ## 1. Criar o projeto no Supabase
@@ -40,7 +40,7 @@ esta pagina web para login, apenas para cadastro + inicio do pagamento).
 ## 2. Criar o produto e o preco no Stripe
 
 1. Crie uma conta/projeto em https://dashboard.stripe.com.
-2. Em **Product catalog**, crie um produto (ex: "TibiaAssist - Assinatura
+2. Em **Product catalog**, crie um produto (ex: "EasyF - Assinatura
    mensal") com um preco **recorrente** (recurring). Copie o `price id`
    (comeca com `price_...`) -> variavel `STRIPE_PRICE_ID`.
 3. Em **Developers > API keys**, copie a **Secret key** -> variavel
@@ -148,7 +148,7 @@ retornam `{"error": "<mensagem>"}` com status 400 (entrada invalida) ou 401
 
 ## 9. Configurando o app desktop
 
-No `config.json` do TibiaAssist (raiz do repositorio, fora de `backend/`),
+No `config.json` do EasyF (raiz do repositorio, fora de `backend/`),
 defina a URL publicada deste backend em `license.api_base_url`, por exemplo:
 
 ```json

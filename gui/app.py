@@ -19,6 +19,7 @@ from tkinter import messagebox, ttk
 
 from core import region_selector
 from core.config import Config
+from core.coordinator import AutomationCoordinator
 from core.input_simulator import InputSimulator
 from core.license import LicenseManager
 from core.version import APP_VERSION
@@ -55,6 +56,7 @@ class App(tk.Tk):
         self._hotkey_handles: list = []
         self.license = license_manager
         self.logout_requested = False
+        self.coordinator = AutomationCoordinator()
 
         self._build()
         self._register_hotkeys()
@@ -247,6 +249,8 @@ class App(tk.Tk):
         if existing is not None and existing.is_alive():
             messagebox.showinfo(APP_NAME, "Esta rotina ja esta em execucao.")
             return
+        cfg = dict(cfg)
+        cfg["_coordinator"] = self.coordinator
         worker = worker_class(cfg, self.events)
         self.workers[key] = worker
         worker.start()
@@ -296,6 +300,12 @@ class App(tk.Tk):
                     tab.on_state(payload)
                 elif kind == "counter":
                     tab.on_counter(payload)
+                elif kind == "popup":
+                    messagebox.showwarning(APP_NAME, payload)
+                elif kind == "config_update":
+                    apply = getattr(tab, "apply_config_update", None)
+                    if apply:
+                        apply(payload)
         except queue.Empty:
             pass
         finally:

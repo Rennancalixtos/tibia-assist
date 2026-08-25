@@ -1,0 +1,58 @@
+name: Build e Release
+
+# Dispara quando uma tag "vX.Y.Z" e enviada (ex: git tag v1.1.0 && git push origin v1.1.0).
+# Empurrar codigo pra main/dev NAO cria release nenhuma - so uma tag dispara isso.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # necessario pro GITHUB_TOKEN poder criar a release e subir o asset
+
+jobs:
+  build:
+    # PyInstaller nao faz cross-compile - o .exe do Windows precisa ser
+    # gerado numa maquina Windows (mesma exigencia do build.bat local).
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Baixa o instalador do Tesseract (embutido no pacote)
+        shell: pwsh
+        run: |
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/tesseract-ocr/tesseract/releases/latest"
+          $asset = $release.assets | Where-Object { $_.name -like "tesseract-ocr-w64-setup*.exe" } | Select-Object -First 1
+          New-Item -ItemType Directory -Force -Path "assets" | Out-Null
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "assets\tesseract-ocr-w64-setup.exe"
+
+      - name: Instala dependencias
+        shell: cmd
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller
+
+      - name: Gera o executavel
+        shell: cmd
+        run: python -m PyInstaller EasyF.spec --noconfirm --clean
+
+      - name: Acha o .exe gerado
+        id: find_exe
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path "dist" -Filter "*.exe" | Select-Object -First 1
+          if (-not $exe) { throw "Nenhum .exe encontrado em dist/ apos o build." }
+          "path=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+          "name=$($exe.Name)" >> $env:GITHUB_OUTPUT
+
+      - name: Publica a Release com o .exe anexado
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.find_exe.outputs.path }}
+          generate_release_notes: true
