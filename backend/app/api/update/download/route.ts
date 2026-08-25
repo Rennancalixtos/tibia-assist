@@ -8,10 +8,19 @@ export const dynamic = "force-dynamic";
  * para o app desktop, sem nunca expor o token do GitHub a ele.
  */
 export async function GET(request: Request) {
-  const assetId = new URL(request.url).searchParams.get("asset_id");
+  const url = new URL(request.url);
+  const assetId = url.searchParams.get("asset_id");
   if (!assetId) {
     return NextResponse.json({ error: "Informe asset_id." }, { status: 400 });
   }
+
+  // Nome pra salvar o arquivo (opcional - quem redireciona pra aqui, como
+  // /download, ja sabe o nome real do asset escolhido). Sanitizado porque
+  // vai direto pro header; sem isso (ex: chamada direta do updater), cai
+  // num nome generico - o Content-Disposition so importa pra quem baixa
+  // pelo navegador, o updater do app desktop ja nomeia o arquivo sozinho.
+  const requestedName = (url.searchParams.get("asset_name") || "").replace(/[^\w.\-]/g, "");
+  const fileName = requestedName || "EasyF.exe";
 
   const token = process.env.GITHUB_TOKEN;
   const repo = process.env.GITHUB_REPO;
@@ -45,7 +54,7 @@ export async function GET(request: Request) {
   return new NextResponse(res.body, {
     headers: {
       "Content-Type": "application/octet-stream",
-      "Content-Disposition": 'attachment; filename="EasyF.exe"',
+      "Content-Disposition": `attachment; filename="${fileName}"`,
     },
   });
 }
