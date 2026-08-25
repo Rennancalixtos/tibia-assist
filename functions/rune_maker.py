@@ -29,7 +29,7 @@ import numpy as np
 
 from core.input_simulator import InputSimulator
 from core.screen_capture import ScreenCapture, is_valid_region, load_image
-from core.tesseract_installer import find_tesseract
+from core.tesseract_installer import find_tesseract, install_tesseract
 from core.worker import BaseWorker
 
 try:
@@ -45,17 +45,32 @@ class OCRUnavailable(RuntimeError):
     pass
 
 
-def configure_tesseract(explicit_cmd: str | None = None) -> None:
+def configure_tesseract(explicit_cmd: str | None = None, on_progress=None) -> None:
     """Aponta o pytesseract pro binario do Tesseract.
 
-    Usa `explicit_cmd` se informado (campo da GUI); senao tenta achar
-    automaticamente (PATH ou pasta padrao de instalacao) - sem isso, o
-    pytesseract so funciona se "tesseract" estiver no PATH do sistema, o
-    que nem sempre e verdade mesmo com o programa instalado.
+    Usa `explicit_cmd` se informado; senao tenta achar automaticamente (PATH
+    ou pasta padrao de instalacao). Se nao achar de nenhum jeito, instala
+    sozinho (instalador ja embutido no pacote - sem precisar de internet
+    nesse momento, ver core/tesseract_installer.py) e tenta achar de novo -
+    o usuario nunca precisa instalar o Tesseract manualmente.
+
+    `on_progress`, se informado, recebe uma linha de status (mesma cara de
+    `BaseWorker.log`) - so relevante quando uma instalacao de verdade
+    acontece (a maioria das vezes o Tesseract ja esta la e isso e um no-op).
     """
     if pytesseract is None:
         return
+
+    def report(msg: str) -> None:
+        if on_progress:
+            on_progress(msg)
+
     cmd = (explicit_cmd or "").strip() or find_tesseract()
+    if not cmd:
+        report("Tesseract OCR nao encontrado - instalando automaticamente...")
+        ok, message = install_tesseract()
+        report(message)
+        cmd = find_tesseract()
     if cmd:
         pytesseract.pytesseract.tesseract_cmd = cmd
 
@@ -152,7 +167,7 @@ class RuneMakerWorker(BaseWorker):
         self.hand_empty_template = self._load_slot_template("hand_slot")
         self.output_empty_template = self._load_slot_template("output_slot")
 
-        configure_tesseract(self.config.get("tesseract_cmd"))
+        configure_tesseract(on_progress=self.log)
 
         # Evita repetir a mesma mensagem de "sem recurso" a cada iteracao.
         self._last_warning = ""
@@ -180,6 +195,7 @@ class RuneMakerWorker(BaseWorker):
         """True se a mana esta acima do minimo configurado."""
         if self.check_mana:
             mana = self.read_status("mana")
+            self.emit("mana_reading", mana)
             if mana is None:
                 self.warn_once("Nao consegui ler a mana via OCR. Verifique a regiao configurada.")
                 return False

@@ -24,6 +24,7 @@ from core.input_simulator import InputSimulator
 from core.license import LicenseManager
 from core.version import APP_VERSION
 from gui.license_dialog import ensure_license
+from gui.widgets import HotkeyButton
 
 try:
     import keyboard  # hotkeys globais (funciona com a janela do jogo em foco)
@@ -84,14 +85,14 @@ class App(tk.Tk):
         top.pack(fill="x", padx=8, pady=(8, 4))
 
         hk = self.config_store.section("hotkeys")
-        self.var_pause_key = tk.StringVar(value=hk.get("pause", "f6"))
+        self.var_pause_key = tk.StringVar(value=hk.get("pause", "pause"))
         self.var_stop_key = tk.StringVar(value=hk.get("stop", "f7"))
         self.var_hotkeys_on = tk.BooleanVar(value=bool(hk.get("enabled", True)))
 
         ttk.Label(top, text="Pausar/Retomar").grid(row=0, column=0, sticky="w", padx=4)
-        ttk.Entry(top, textvariable=self.var_pause_key, width=8).grid(row=0, column=1, padx=4)
+        HotkeyButton(top, self.var_pause_key, width=10).grid(row=0, column=1, padx=4)
         ttk.Label(top, text="Parar tudo").grid(row=0, column=2, sticky="w", padx=4)
-        ttk.Entry(top, textvariable=self.var_stop_key, width=8).grid(row=0, column=3, padx=4)
+        HotkeyButton(top, self.var_stop_key, width=10).grid(row=0, column=3, padx=4)
         ttk.Checkbutton(top, text="ativas", variable=self.var_hotkeys_on).grid(row=0, column=4, padx=8)
         ttk.Button(top, text="Aplicar", command=self._apply_hotkeys).grid(row=0, column=5, padx=4)
         ttk.Button(top, text="Parar tudo agora", command=self.stop_all).grid(row=0, column=6, padx=12)
@@ -198,7 +199,7 @@ class App(tk.Tk):
 
     def _apply_hotkeys(self) -> None:
         hk = self.config_store.section("hotkeys")
-        hk["pause"] = self.var_pause_key.get().strip().lower() or "f6"
+        hk["pause"] = self.var_pause_key.get().strip().lower() or "pause"
         hk["stop"] = self.var_stop_key.get().strip().lower() or "f7"
         hk["enabled"] = bool(self.var_hotkeys_on.get())
         self.config_store.save()
@@ -461,6 +462,10 @@ class App(tk.Tk):
                     apply = getattr(tab, "apply_config_update", None)
                     if apply:
                         apply(payload)
+                elif kind == "mana_reading":
+                    on_reading = getattr(tab, "on_mana_reading", None)
+                    if on_reading:
+                        on_reading(payload)
         except queue.Empty:
             pass
         finally:

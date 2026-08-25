@@ -77,6 +77,94 @@ class LogPanel(ttk.LabelFrame):
         self.text.configure(state="disabled")
 
 
+class HotkeyButton(ttk.Button):
+    """Botao que mostra a tecla atual e, ao ser clicado, espera a proxima
+    tecla apertada pra substituir - evita digitar o nome exato da tecla
+    (ex: "f6") na mao, que e a fonte mais comum de hotkey mal configurada.
+    """
+
+    # Teclas modificadoras sozinhas nao viram hotkey (o clique ainda esta
+    # "esperando" a tecla de verdade - apertar so Shift/Ctrl nao conta).
+    _IGNORED_KEYSYMS = {
+        "Shift_L", "Shift_R", "Control_L", "Control_R", "Alt_L", "Alt_R",
+        "Caps_Lock", "Num_Lock", "Scroll_Lock", "Super_L", "Super_R",
+        "Meta_L", "Meta_R",
+    }
+    # Mapeia o keysym do Tkinter pro nome de tecla usado no resto do
+    # projeto (mesma convencao de core/background_input.py e das libs de
+    # input - nomes curtos em minusculo: "f6", "space", "enter", "esc"...).
+    _KEYSYM_MAP = {
+        "Return": "enter",
+        "Escape": "esc",
+        "BackSpace": "backspace",
+        "Delete": "delete",
+        "Tab": "tab",
+        "Pause": "pause",
+        "Up": "up",
+        "Down": "down",
+        "Left": "left",
+        "Right": "right",
+        "Prior": "pageup",
+        "Next": "pagedown",
+        "Home": "home",
+        "End": "end",
+        "space": "space",
+    }
+
+    def __init__(self, parent, variable: tk.StringVar, width: int = 10, on_change=None):
+        super().__init__(parent, width=width, command=self._start_capture)
+        self.variable = variable
+        self.on_change = on_change
+        self._refresh_label()
+
+    def _refresh_label(self) -> None:
+        self.configure(text=(self.variable.get() or "-").upper())
+
+    def _start_capture(self) -> None:
+        self.configure(text="Pressione uma tecla...")
+        self.focus_set()
+        self.bind("<KeyPress>", self._on_key)
+        self.bind("<FocusOut>", self._cancel_capture)
+
+    def _cancel_capture(self, _event=None) -> None:
+        self.unbind("<KeyPress>")
+        self.unbind("<FocusOut>")
+        self._refresh_label()
+
+    def _on_key(self, event) -> None:
+        if event.keysym in self._IGNORED_KEYSYMS:
+            return  # continua esperando uma tecla de verdade
+        name = self._normalize(event.keysym)
+        if not name:
+            return
+        self.unbind("<KeyPress>")
+        self.unbind("<FocusOut>")
+        self.variable.set(name)
+        self._refresh_label()
+        if self.on_change:
+            self.on_change(name)
+
+    @classmethod
+    def _normalize(cls, keysym: str) -> str | None:
+        if len(keysym) == 1:
+            return keysym.lower()
+        if keysym in cls._KEYSYM_MAP:
+            return cls._KEYSYM_MAP[keysym]
+        if len(keysym) in (2, 3) and keysym[0] in ("F", "f") and keysym[1:].isdigit():
+            return keysym.lower()
+        return None
+
+
+def add_hotkey_field(parent, row: int, label: str, variable, width: int = 10, hint: str = "", on_change=None):
+    """Como `add_field`, mas com um `HotkeyButton` no lugar do Entry."""
+    ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=4, pady=3)
+    button = HotkeyButton(parent, variable, width=width, on_change=on_change)
+    button.grid(row=row, column=1, sticky="w", padx=4, pady=3)
+    if hint:
+        ttk.Label(parent, text=hint, foreground="#666").grid(row=row, column=2, sticky="w", padx=4)
+    return button
+
+
 def add_field(parent, row: int, label: str, variable, width: int = 12, hint: str = ""):
     """Adiciona um par label/entry numa grade e devolve o widget de entrada."""
     ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=4, pady=3)
