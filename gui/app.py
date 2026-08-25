@@ -21,6 +21,7 @@ from core import region_selector
 from core.config import Config
 from core.input_simulator import InputSimulator
 from core.license import LicenseManager
+from core.version import APP_VERSION
 from gui.license_dialog import ensure_license
 
 try:
@@ -30,7 +31,6 @@ except Exception:  # pragma: no cover - pode faltar permissao no Linux
 
 
 APP_NAME = "EasyF"
-APP_VERSION = "1.0.0"
 
 DISCLAIMER = (
     "Aviso: automacao pode violar os termos de uso do servidor/jogo e "
@@ -39,17 +39,22 @@ DISCLAIMER = (
 
 
 class App(tk.Tk):
-    def __init__(self) -> None:
+    def __init__(self, config_store: Config, license_manager: LicenseManager) -> None:
+        """`config_store` e `license_manager` vem prontos de main.py - o
+        login (janela standalone, ver gui/license_dialog.py) roda ANTES
+        desta janela ser criada, garantindo que so uma janela apareca por
+        vez (login primeiro, app depois)."""
         super().__init__()
         self.title(f"{APP_NAME} {APP_VERSION}")
         self.geometry("760x760")
         self.minsize(700, 640)
 
-        self.config_store = Config()
+        self.config_store = config_store
         self.events: "queue.Queue[tuple]" = queue.Queue()
         self.workers: dict[str, object] = {}
         self._hotkey_handles: list = []
-        self.license = LicenseManager(self.config_store.section("license"))
+        self.license = license_manager
+        self.logout_requested = False
 
         self._build()
         self._register_hotkeys()
@@ -57,12 +62,20 @@ class App(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.after(100, self._pump_events)
 
-        self.license_ok = self._ensure_license_startup()
-        if self.license_ok:
-            self._schedule_license_check()
+        self._schedule_license_check()
 
     # ---------------------------------------------------------------- layout
     def _build(self) -> None:
+        # Barra de conta (usuario logado + tempo restante de assinatura) ----
+        account_bar = ttk.Frame(self, padding=(8, 6, 8, 0))
+        account_bar.pack(fill="x")
+        self.var_account_info = tk.StringVar(value="")
+        ttk.Label(
+            account_bar, textvariable=self.var_account_info, foreground="#0a5", font=("Segoe UI", 9, "bold")
+        ).pack(side="left", anchor="w")
+        ttk.Button(account_bar, text="Sair da conta", command=self.logout).pack(side="right")
+        self._tick_account_info()
+
         # Barra de hotkeys globais -----------------------------------------
         top = ttk.LabelFrame(self, text="Hotkeys globais", padding=6)
         top.pack(fill="x", padx=8, pady=(8, 4))
@@ -183,26 +196,29 @@ class App(tk.Tk):
     def _save_license(self) -> None:
         self.config_store.save()
 
-    def _ensure_license_startup(self) -> bool:
-        """Roda no boot: revalida a key salva e, se preciso, pede uma nova.
+    def _update_account_info(self) -> None:
+        email = self.license.email or "-"
+        self.var_account_info.set(f"Logado como: {email}   |   Acesso restante: {self.license.expires_label}")
 
-        Some a janela principal enquanto o dialogo de licenca esta aberto -
-        nenhuma rotina deve rodar (nem a janela ser usada) sem licenca ativa.
-        """
-        if self.license.logged_in:
-            self.license.refresh()
-            self.config_store.save()
-        if self.license.valid:
-            return True
+    def _tick_account_info(self) -> None:
+        """Reagenda a si mesma a cada minuto so pra atualizar o texto (o
+        tempo restante e calculado local, sem precisar checar o servidor)."""
+        self._update_account_info()
+        self.after(60_000, self._tick_account_info)
 
-        self.withdraw()
-        ok = False
-        try:
-            ok = ensure_license(self, self.license, self._save_license)
-        finally:
-            if ok:
-                self.deiconify()
-        return ok
+    def logout(self) -> None:
+        """Limpa a sessao salva (access/refresh token, status) e fecha o
+        programa - main.py detecta `logout_requested` e mostra o login de
+        novo, em vez do app continuar aberto sem licenca valida."""
+        if not messagebox.askyesno(
+            APP_NAME, "Sair da conta? Vai precisar logar novamente pra usar o programa."
+        ):
+            return
+        self.stop_all()
+        self.license.logout()
+        self.config_store.save()
+        self.logout_requested = True
+        self.destroy()
 
     def _schedule_license_check(self) -> None:
         interval_min = float(self.config_store.get("license.check_interval_minutes", 30) or 30)
@@ -212,6 +228,7 @@ class App(tk.Tk):
         was_valid = self.license.valid
         self.license.refresh()
         self.config_store.save()
+        self._update_account_info()
         if was_valid and not self.license.valid:
             self.stop_all()
             messagebox.showwarning(

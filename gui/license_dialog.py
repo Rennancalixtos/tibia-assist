@@ -1,9 +1,17 @@
-"""Dialogo modal de login/cadastro.
+"""Janela/dialogo de login+cadastro.
 
-Bloqueia a janela principal enquanto nao houver uma sessao com assinatura
-ativa - o unico jeito de fechar este dialogo com sucesso e logando numa
-conta com assinatura valida ou cancelando (o que fecha o programa, ja que
-nenhuma rotina pode rodar sem licenca).
+Duas situacoes usam o mesmo formulario (por isso o mixin `_LoginForm`):
+
+- No boot, ANTES da janela principal existir: `run_startup_login` cria uma
+  janela Tk standalone, sozinha na tela - so depois de logar com sucesso a
+  janela principal e criada. Nao reaproveita a janela principal como "master"
+  de um Toplevel aqui porque, no Windows, um Toplevel "transient" de uma
+  janela raiz escondida (`withdraw`) por vezes nao e exibido pelo gerenciador
+  de janelas - testado e confirmado neste projeto.
+- Depois que a janela principal ja existe (licenca caiu no meio do uso, ou
+  o usuario tenta iniciar uma rotina sem sessao ativa): `ensure_license`
+  mostra um dialogo modal (Toplevel) por cima da janela principal, que fica
+  visivel mas bloqueada por tras (grab_set).
 """
 
 from __future__ import annotations
@@ -15,22 +23,19 @@ from tkinter import ttk
 from core.license import LicenseManager
 
 
-class LicenseDialog(tk.Toplevel):
-    def __init__(self, master: tk.Tk, license_manager: LicenseManager, on_save):
-        super().__init__(master)
-        self.license_manager = license_manager
-        self.on_save = on_save
-        self.accepted = False
+class _LoginForm:
+    """Mixin com o formulario de login/cadastro e os handlers dos botoes.
 
-        self.title("Login - TibiaAssist")
-        self.resizable(False, False)
-        self.transient(master)
-        self.protocol("WM_DELETE_WINDOW", self._cancel)
+    A classe que usa este mixin precisa definir `self.license_manager`,
+    `self.on_save` e `self.accepted` antes de chamar `_build_form()`, e ser
+    ela mesma um widget Tk/Toplevel (usa `self` como container/janela).
+    """
 
+    def _build_form(self) -> None:
         body = ttk.Frame(self, padding=16)
         body.pack(fill="both", expand=True)
 
-        self.var_message = tk.StringVar(value=license_manager.message or "")
+        self.var_message = tk.StringVar(value=self.license_manager.message or "")
         ttk.Label(body, textvariable=self.var_message, foreground="#a33", wraplength=360, justify="left").grid(
             row=0, column=0, columnspan=2, sticky="w", pady=(0, 10)
         )
@@ -63,9 +68,6 @@ class LicenseDialog(tk.Toplevel):
         hint.grid(row=6, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
         self.bind("<Return>", lambda _e: self._login())
-        self.grab_set()
-        self.wait_visibility()
-        self.focus_force()
 
     def _credentials(self) -> tuple[str, str] | None:
         email = self.var_email.get().strip()
@@ -127,10 +129,61 @@ class LicenseDialog(tk.Toplevel):
         self.destroy()
 
 
+class LicenseDialog(tk.Toplevel, _LoginForm):
+    """Dialogo modal usado quando a janela principal ja existe."""
+
+    def __init__(self, master: tk.Tk, license_manager: LicenseManager, on_save):
+        tk.Toplevel.__init__(self, master)
+        self.license_manager = license_manager
+        self.on_save = on_save
+        self.accepted = False
+
+        self.title("Login - TibiaAssist")
+        self.resizable(False, False)
+        self.transient(master)
+        self.protocol("WM_DELETE_WINDOW", self._cancel)
+
+        self._build_form()
+
+        self.grab_set()
+        self.focus_force()
+
+
+class LoginWindow(tk.Tk, _LoginForm):
+    """Janela standalone usada ANTES da janela principal existir.
+
+    Assim so uma janela aparece por vez: login primeiro, app depois - em vez
+    de mostrar as duas juntas.
+    """
+
+    def __init__(self, license_manager: LicenseManager, on_save):
+        tk.Tk.__init__(self)
+        self.license_manager = license_manager
+        self.on_save = on_save
+        self.accepted = False
+
+        self.title("Login - TibiaAssist")
+        self.resizable(False, False)
+        self.protocol("WM_DELETE_WINDOW", self._cancel)
+
+        self._build_form()
+
+
 def ensure_license(master: tk.Tk, license_manager: LicenseManager, on_save) -> bool:
-    """Mostra o dialogo se a sessao atual nao for valida. Devolve True se ok."""
+    """Mostra o dialogo modal se a sessao atual nao for valida (janela
+    principal ja existe). Devolve True se ok."""
     if license_manager.valid:
         return True
     dialog = LicenseDialog(master, license_manager, on_save)
     master.wait_window(dialog)
     return dialog.accepted
+
+
+def run_startup_login(license_manager: LicenseManager, on_save) -> bool:
+    """Mostra a janela de login standalone se a sessao atual nao for valida
+    (usado ANTES de criar a janela principal). Devolve True se ok."""
+    if license_manager.valid:
+        return True
+    window = LoginWindow(license_manager, on_save)
+    window.mainloop()
+    return window.accepted

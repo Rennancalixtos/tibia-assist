@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from core.screen_capture import ScreenCapture, is_valid_region
+from core.tesseract_installer import find_tesseract, install_tesseract
 from functions.rune_maker import OCRUnavailable, RuneMakerWorker, read_number
 from gui.widgets import LogPanel, ScrollableFrame, add_field, parse_float, parse_int, region_text
 
@@ -71,6 +72,9 @@ class RuneMakerWindow(ttk.Frame):
         ttk.Button(box_ocr, text="Testar OCR", command=self.test_ocr).grid(
             row=3, column=0, padx=4, pady=6, sticky="w"
         )
+        ttk.Button(
+            box_ocr, text="Instalar Tesseract automaticamente...", command=self.install_tesseract
+        ).grid(row=3, column=1, columnspan=2, padx=4, pady=6, sticky="w")
 
         # Ritmo -------------------------------------------------------------
         box_rate = ttk.LabelFrame(body, text="3. Ritmo")
@@ -142,6 +146,31 @@ class RuneMakerWindow(ttk.Frame):
             messagebox.showerror("RuneMaker", str(exc))
             return
         self.log(f"OCR mana: {value if value is not None else 'nao reconhecido'}")
+
+    def install_tesseract(self) -> None:
+        """Baixa e instala o Tesseract OCR silenciosamente, se ainda nao
+        estiver presente no PATH ou no local padrao de instalacao."""
+        existing = find_tesseract()
+        if existing:
+            messagebox.showinfo("RuneMaker", f"Tesseract ja instalado em:\n{existing}")
+            return
+        if not messagebox.askyesno(
+            "RuneMaker",
+            "O Tesseract OCR (usado pra ler a mana) nao foi encontrado.\n\n"
+            "Baixar e instalar automaticamente agora? (~25 MB, alguns segundos)",
+        ):
+            return
+
+        def report(msg: str) -> None:
+            self.log(msg)
+            self.update_idletasks()
+
+        ok, message = install_tesseract(on_progress=report)
+        self.log(message)
+        if ok:
+            messagebox.showinfo("RuneMaker", message)
+        else:
+            messagebox.showerror("RuneMaker", message)
 
     # -------------------------------------------------------------- controles
     def save_config(self) -> None:
