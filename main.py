@@ -49,6 +49,9 @@ def main() -> int:
     from gui.app import App
 
     app = App()
+    if not getattr(app, "license_ok", True):
+        app.destroy()
+        return 1
     app.mainloop()
     return 0
 

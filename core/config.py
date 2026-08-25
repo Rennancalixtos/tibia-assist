@@ -33,6 +33,23 @@ CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 
 DEFAULTS: dict[str, Any] = {
+    # Licenca/assinatura - sem uma key valida nenhuma rotina roda.
+    "license": {
+        # URL base do backend (Vercel) que valida a key. Preencher apos o deploy.
+        "api_base_url": "",
+        # Tolerancia offline: aceita a ultima validacao "active" por N horas
+        # sem internet antes de bloquear as rotinas.
+        "grace_period_hours": 12,
+        # Intervalo entre revalidacoes automaticas enquanto o programa esta aberto.
+        "check_interval_minutes": 30,
+        # Sessao e estado da ultima validacao (preenchidos automaticamente, nao editar).
+        "access_token": "",
+        "refresh_token": "",
+        "access_token_expires_at": None,
+        "status": "unknown",
+        "expires_at": None,
+        "checked_at": 0,
+    },
     # Hotkeys globais, compartilhadas pelas duas funcoes
     "hotkeys": {
         "pause": "f6",   # pausa / retoma a funcao em execucao
