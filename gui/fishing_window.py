@@ -9,8 +9,14 @@ from tkinter import messagebox, ttk
 import cv2
 
 from core.config import ASSETS_DIR
-from core.screen_capture import ScreenCapture, is_valid_region, save_image
-from functions.auto_fishing import AutoFishingWorker, draw_tile_grid, sample_hsv_range
+from core.screen_capture import ScreenCapture, is_valid_region, load_image, save_image
+from functions.auto_fishing import (
+    AutoFishingWorker,
+    draw_tile_grid,
+    find_water_template,
+    find_water_tiles_hsv,
+    sample_hsv_range,
+)
 from gui.widgets import LogPanel, ScrollableFrame, add_field, parse_float, parse_int, region_text
 
 # O worker/InputSimulator so reconhecem os valores internos "right"/"left" -
@@ -245,42 +251,59 @@ class FishingWindow(ttk.Frame):
         self.save_config()
         self.log(f"Template salvo em {path} ({region[2]}x{region[3]} px)")
 
+    def _run_detection(self) -> tuple:
+        """Captura a regiao e roda a deteccao configurada, sem depender do
+        resto do worker (posicao da vara, etc.) - o teste e so sobre a agua.
+
+        Devolve (frame, targets). Lanca ValueError se a regiao/template nao
+        estiverem prontos.
+        """
+        cfg = self.worker_config()
+        if not is_valid_region(cfg.get("region")):
+            raise ValueError("Selecione a regiao monitorada primeiro.")
+
+        with ScreenCapture() as cap:
+            frame = cap.grab(cfg["region"])
+
+        if cfg.get("detection_mode") == "template":
+            template = load_image(cfg["template_path"])
+            if template is None:
+                raise ValueError(
+                    "Template de agua nao encontrado. Calibre um template ou use o modo HSV."
+                )
+            targets = find_water_template(frame, template, cfg.get("template_threshold", 0.80))
+        else:
+            targets = find_water_tiles_hsv(
+                frame,
+                cfg.get("hsv_lower", [90, 60, 40]),
+                cfg.get("hsv_upper", [130, 255, 255]),
+                int(cfg.get("min_area", 200)),
+                int(cfg.get("tile_size", 32)),
+                float(cfg.get("min_tile_coverage", 0.35)),
+            )
+        return frame, targets
+
     def test_detection(self) -> None:
         """Roda a deteccao uma unica vez e informa quantas tiles foram achadas."""
         self.save_config()
-        cfg = self.worker_config()
-        if not is_valid_region(cfg.get("region")):
-            messagebox.showwarning("AutoFishing", "Selecione a regiao monitorada primeiro.")
-            return
         try:
-            worker = AutoFishingWorker(cfg, self.app.events)
-            worker.setup()
-            with ScreenCapture() as cap:
-                frame = cap.grab(cfg["region"])
-            targets = worker.detect(frame)
-            worker.teardown()
+            _frame, targets = self._run_detection()
         except Exception as exc:
             messagebox.showerror("AutoFishing", f"Falha no teste: {exc}")
             return
-        self.log(f"Teste de deteccao: {len(targets)} SQM(s) de agua encontrado(s).")
+
+        message = f"Teste de deteccao: {len(targets)} SQM(s) de agua encontrado(s)."
         if targets:
             cx, cy, score = targets[0]
-            self.log(f"Melhor candidato (relativo a regiao): x={cx} y={cy} score/cobertura={score}")
+            message += f"\nMelhor candidato (relativo a regiao): x={cx} y={cy} score/cobertura={score}"
+        self.log(message)
+        messagebox.showinfo("AutoFishing", message)
 
     def preview_grid(self) -> None:
         """Mostra o grid de SQM sobre a regiao, com os tiles validos marcados."""
         self.save_config()
-        cfg = self.worker_config()
-        if not is_valid_region(cfg.get("region")):
-            messagebox.showwarning("AutoFishing", "Selecione a regiao monitorada primeiro.")
-            return
         try:
-            worker = AutoFishingWorker(cfg, self.app.events)
-            worker.setup()
-            with ScreenCapture() as cap:
-                frame = cap.grab(cfg["region"])
-            targets = worker.detect(frame)
-            worker.teardown()
+            frame, targets = self._run_detection()
         except Exception as exc:
             messagebox.showerror("AutoFishing", f"Falha no teste: {exc}")
             return
