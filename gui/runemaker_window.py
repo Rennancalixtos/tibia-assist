@@ -134,7 +134,7 @@ class RuneMakerWindow(ttk.Frame):
 
         region = self.cfg.get("mana_region")
         if not is_valid_region(region):
-            self.log("Regiao de mana nao configurada.")
+            messagebox.showwarning("RuneMaker", "Regiao de mana nao configurada.")
             return
         try:
             with ScreenCapture() as cap:
@@ -142,7 +142,9 @@ class RuneMakerWindow(ttk.Frame):
         except OCRUnavailable as exc:
             messagebox.showerror("RuneMaker", str(exc))
             return
-        self.log(f"OCR mana: {value if value is not None else 'nao reconhecido'}")
+        message = f"OCR mana: {value if value is not None else 'nao reconhecido'}"
+        self.log(message)
+        messagebox.showinfo("RuneMaker", message)
 
     def install_tesseract(self) -> None:
         """Baixa e instala o Tesseract OCR silenciosamente, se ainda nao
