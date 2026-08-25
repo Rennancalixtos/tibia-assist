@@ -45,7 +45,13 @@ export async function GET() {
 
   const release = await res.json();
   const assets: Array<{ id: number; name: string; size: number }> = release.assets || [];
-  const exeAsset = assets.find((a) => a.name?.toLowerCase().endsWith(".exe"));
+  // O auto-update silencioso precisa do .exe PORTATIL (troca em runtime,
+  // sem wizard) - nunca do instalador NSIS (*-Setup.exe), que abre uma
+  // janela e pede clique.
+  const exeAsset = assets.find((a) => {
+    const name = a.name?.toLowerCase() || "";
+    return name.endsWith(".exe") && !name.includes("setup") && !name.includes("install");
+  });
 
   return NextResponse.json({
     version: release.tag_name || null,

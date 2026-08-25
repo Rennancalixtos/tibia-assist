@@ -202,10 +202,12 @@ no console em vez de o programa fechar em silêncio.
 
 ### Onde ficam os arquivos no executável
 
-Rodando como `.exe`, o `config.json` e a pasta `assets/` ficam **ao lado do
-executável**, não na pasta temporária do PyInstaller — então as configurações e
-o template calibrado sobrevivem entre execuções. Mantenha o `.exe` numa pasta
-onde seu usuário tenha permissão de escrita (evite `C:\Program Files`).
+Rodando como `.exe`, o `config.json` e a pasta `assets/` (templates
+calibrados) ficam em `%APPDATA%\EasyF\` - nunca ao lado do próprio `.exe`
+(que pode estar em `Program Files` sem permissão de escrita, ou ser
+sobrescrito pelo auto-update) nem na pasta temporária do PyInstaller (essa
+sim é apagada ao fechar o programa). Rodando pelo código-fonte
+(`python main.py`), fica na raiz do projeto, pra facilitar debug.
 
 ### Observações
 
@@ -237,9 +239,27 @@ nunca com um push comum em `main`/`dev`:
    git tag v1.1.0
    git push origin v1.1.0
    ```
-3. O GitHub Actions builda o `.exe` numa VM Windows e publica a Release com
-   ele anexado automaticamente - acompanhe em Actions no GitHub. Nenhum passo
-   manual de build/upload e necessario.
+3. O GitHub Actions builda o `.exe` **e** o instalador (`installer.nsi`, ver
+   abaixo) numa VM Windows e publica a Release com os dois anexados
+   automaticamente - acompanhe em Actions no GitHub. Nenhum passo manual de
+   build/upload e necessario.
+
+### Instalador (NSIS)
+
+Cada release ganha dois arquivos: o `.exe` **portatil** (o que o
+auto-update baixa e troca sozinho, sem abrir nenhuma janela) e
+`EasyF-Setup.exe` (instalador com assistente, atalho na Area de Trabalho e
+no Menu Iniciar, e desinstalador - pensado pra quem esta instalando por
+primeira vez, ver `/download` no `backend/README.md`). O instalador coloca
+o programa em `%LOCALAPPDATA%\EasyF`; a configuracao/licenca do usuario
+continua em `%APPDATA%\EasyF` (ver seção anterior), separada dos binarios.
+
+Pra gerar o instalador manualmente (precisa do
+[NSIS](https://nsis.sourceforge.io/) instalado):
+
+```bat
+makensis /DEXE_PATH="dist\NOME_DO_EXE.exe" /DEXE_NAME="NOME_DO_EXE.exe" installer.nsi
+```
 
 ## Solução de problemas
 

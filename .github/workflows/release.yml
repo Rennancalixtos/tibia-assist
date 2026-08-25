@@ -51,8 +51,20 @@ jobs:
           "path=$($exe.FullName)" >> $env:GITHUB_OUTPUT
           "name=$($exe.Name)" >> $env:GITHUB_OUTPUT
 
-      - name: Publica a Release com o .exe anexado
+      - name: Instala o NSIS
+        shell: pwsh
+        run: choco install nsis -y --no-progress
+
+      - name: Gera o instalador (atalho na Area de Trabalho, Menu Iniciar, desinstalador)
+        shell: pwsh
+        run: |
+          makensis /DEXE_PATH="${{ steps.find_exe.outputs.path }}" /DEXE_NAME="${{ steps.find_exe.outputs.name }}" installer.nsi
+          if ($LASTEXITCODE -ne 0) { throw "makensis falhou (codigo $LASTEXITCODE)." }
+
+      - name: Publica a Release com o .exe portatil e o instalador anexados
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.find_exe.outputs.path }}
+          files: |
+            ${{ steps.find_exe.outputs.path }}
+            dist/EasyF-Setup.exe
           generate_release_notes: true

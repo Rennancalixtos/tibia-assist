@@ -142,9 +142,21 @@ retornam `{"error": "<mensagem>"}` com status 400 (entrada invalida) ou 401
   ou `{ready: true, license}` (200).
 - `GET /api/update/latest` - consulta o release mais recente do repo
   (privado) no GitHub usando `GITHUB_TOKEN`. Devolve
-  `{version, notes, asset_id, asset_name, size}`.
+  `{version, notes, asset_id, asset_name, size}` - sempre do `.exe`
+  **portatil** (nunca do instalador, ver nota abaixo).
 - `GET /api/update/download?asset_id=...` - repassa (proxy) o binario do
   asset do GitHub pro app desktop, sem expor o token a ele.
+- `GET /download` - link estavel pra compartilhar (Discord, etc.): redireciona
+  pra `/api/update/download` do **instalador** (`*-Setup.exe`) da release mais
+  recente. Cai pro `.exe` portatil se aquela release nao tiver instalador
+  anexado (ex: releases antes do instalador existir).
+
+> Cada release pode ter dois `.exe` anexados (ver
+> `.github/workflows/release.yml`): o portatil (nome sem "setup"/"install",
+> usado pelo auto-update silencioso - nunca abre uma janela) e o instalador
+> NSIS (`EasyF-Setup.exe`, com wizard, atalho na Area de Trabalho e
+> desinstalador - usado so pelo `/download`, pra quem esta baixando por
+> primeira vez).
 
 ## 9. Configurando o app desktop
 
