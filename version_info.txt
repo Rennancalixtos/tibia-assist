@@ -1,0 +1,33 @@
+# Metadados do executavel (Windows VERSIONINFO).
+# Preenchidos de forma honesta: o binario diz exatamente o que ele e.
+# Ajuste CompanyName/LegalCopyright com o seu nome real antes de distribuir.
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(1, 0, 0, 0),
+    prodvers=(1, 0, 0, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0),
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable(
+        '040904B0',  # en-US, Unicode
+        [
+          StringStruct('CompanyName', 'Rennan Calixto'),
+          StringStruct('FileDescription',
+                       'TibiaAssist - automacao de pesca e criacao de runas por captura de tela'),
+          StringStruct('FileVersion', '1.0.0.0'),
+          StringStruct('InternalName', 'TibiaAssist'),
+          StringStruct('LegalCopyright', 'Copyright (c) 2026 Rennan Calixto'),
+          StringStruct('OriginalFilename', 'TibiaAssist.exe'),
+          StringStruct('ProductName', 'TibiaAssist'),
+          StringStruct('ProductVersion', '1.0.0.0'),
+        ])
+    ]),
+    VarFileInfo([VarStruct('Translation', [1033, 1200])])
+  ]
+)
