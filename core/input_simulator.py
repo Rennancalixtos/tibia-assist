@@ -119,6 +119,43 @@ class InputSimulator:
             pyautogui.click(x=tx, y=ty, button=button)
         return tx, ty
 
+    def drag(
+        self,
+        from_x: int,
+        from_y: int,
+        to_x: int,
+        to_y: int,
+        from_jitter: int = 0,
+        to_jitter: int = 0,
+    ) -> tuple[int, int]:
+        """Arrasta um item de (from_x, from_y) para (to_x, to_y).
+
+        Reaproveita `move_to` como primitivo de "mover com o botao apertado" -
+        ele nunca toca o estado do botao, entao chama-lo de novo depois do
+        mouseDown produz um arrasto com a mesma curva/easing humanizada de um
+        movimento normal, sem duplicar essa logica.
+
+        `from_jitter`/`to_jitter` sao separados (e o default e 0 pros dois):
+        slots de inventario sao pequenos (~30x34px) - o jitter usado num
+        clique de area aberta (ex: tile de agua) e grande demais aqui e
+        arrisca soltar o item fora do slot. So passe um valor pequeno
+        (poucos pixels) se quiser alguma variacao.
+
+        O mouseUp fica num `finally`: se `move_to` levantar uma excecao no
+        meio do arrasto (ex: fail-safe de canto de tela), o botao nao pode
+        ficar fisicamente preso pelo resto da sessao.
+        """
+        self.move_to(from_x, from_y, from_jitter)
+        time.sleep(random.uniform(0.05, 0.15))
+        self._backend.mouseDown(button="left")
+        try:
+            time.sleep(random.uniform(0.05, 0.15))
+            tx, ty = self.move_to(to_x, to_y, to_jitter)
+            time.sleep(random.uniform(0.05, 0.15))
+        finally:
+            self._backend.mouseUp(button="left")
+        return tx, ty
+
     # --------------------------------------------------------------- teclado
     def press_key(self, key: str) -> None:
         """Pressiona e solta uma tecla (ex: 'f2', 'space') com timing aleatorio."""

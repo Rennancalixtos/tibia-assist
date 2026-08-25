@@ -68,6 +68,15 @@ DEFAULTS: dict[str, Any] = {
         # Faixa HSV da agua - calibravel pelo usuario a partir de um print da tela dele
         "hsv_lower": [90, 60, 40],
         "hsv_upper": [130, 255, 255],
+        # Brilho (mediana do V) no momento da calibracao - baseline pro
+        # ajuste dinamico dia/noite. None = nunca calibrado, ajuste desligado.
+        "hsv_reference_brightness": None,
+        # Recalibracao periodica por EMA (opt-in) - o ajuste continuo de V
+        # por ciclo (dia/noite) NAO e opt-in, e sempre ativo quando ha
+        # hsv_reference_brightness calibrado.
+        "auto_recalibrate_enabled": False,
+        "auto_recalibrate_interval_minutes": 15,
+        "ema_alpha": 0.15,
         # Area minima (em pixels) de agua na regiao para considerar que ha algo a pescar
         "min_area": 200,
         # Tamanho do grid de SQM em pixels (32 = tile padrao do Tibia sem zoom)
@@ -116,6 +125,27 @@ DEFAULTS: dict[str, Any] = {
         "click_jitter": 2,
         # Caminho do executavel do Tesseract (deixe vazio se estiver no PATH)
         "tesseract_cmd": "",
+        # "craft" (cria runas) ou "mana_training" (so conjura, sem item) -
+        # mutuamente exclusivos, mesma thread/slot de execucao.
+        "mode": "craft",
+        # Alguns OTservers aplicam a magia direto no slot da blank rune, sem
+        # precisar levar pra mao - quando True, pula todo o manuseio de item.
+        "no_hand_mode": False,
+        # Coordenadas [x, y] dos slots de mao e de destino (so usados no modo
+        # completo, com manuseio de mao)
+        "hand_slot": None,
+        "output_slot": None,
+        # Regioes [x, y, largura, altura] usadas pra comparar cada slot com o
+        # template de "vazio" calibrado (ver os campos *_empty_template)
+        "blank_slot_region": None,
+        "hand_slot_region": None,
+        "output_slot_region": None,
+        # Caminho do recorte de referencia de cada slot vazio (assets/*.png)
+        "blank_empty_template": "",
+        "hand_empty_template": "",
+        "output_empty_template": "",
+        # Confianca minima do template match pra considerar um slot vazio
+        "empty_match_threshold": 0.90,
     },
 }
 

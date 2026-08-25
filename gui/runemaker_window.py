@@ -1,14 +1,19 @@
-"""Aba RuneMaker: configuracao, teste de OCR e controle da criacao de runas."""
+"""Aba RuneMaker: configuracao, teste de OCR/sequencia e controle da automacao."""
 
 from __future__ import annotations
 
+import os
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from core.screen_capture import ScreenCapture, is_valid_region
+from core.config import ASSETS_DIR
+from core.screen_capture import ScreenCapture, is_valid_region, save_image
 from core.tesseract_installer import _bundled_installer_path, find_tesseract, install_tesseract
 from functions.rune_maker import OCRUnavailable, RuneMakerWorker, configure_tesseract, read_number
 from gui.widgets import LogPanel, ScrollableFrame, add_field, parse_float, parse_int, region_text
+
+MODE_LABELS = {"craft": "Criar runas", "mana_training": "ManaTraining"}
+MODE_VALUES = {label: value for value, label in MODE_LABELS.items()}
 
 
 class RuneMakerWindow(ttk.Frame):
@@ -32,6 +37,19 @@ class RuneMakerWindow(ttk.Frame):
         self.var_status = tk.StringVar(value="parado")
         self.var_counter = tk.StringVar(value="0")
 
+        self.var_mode = tk.StringVar(value=MODE_LABELS.get(self.cfg.get("mode", "craft"), "Criar runas"))
+        self.var_no_hand = tk.BooleanVar(value=bool(self.cfg.get("no_hand_mode", False)))
+        self.var_hand_slot = tk.StringVar(value=region_text(self.cfg.get("hand_slot")))
+        self.var_output_slot = tk.StringVar(value=region_text(self.cfg.get("output_slot")))
+        self.var_blank_region = tk.StringVar(value=region_text(self.cfg.get("blank_slot_region")))
+        self.var_hand_region = tk.StringVar(value=region_text(self.cfg.get("hand_slot_region")))
+        self.var_output_region = tk.StringVar(value=region_text(self.cfg.get("output_slot_region")))
+        self.var_empty_threshold = tk.StringVar(
+            value=str(int(float(self.cfg.get("empty_match_threshold", 0.90)) * 100))
+        )
+        self.var_dry_run = tk.BooleanVar(value=True)
+        self.var_counter_label = tk.StringVar(value="Runas criadas:")
+
         scroll = ScrollableFrame(self)
         scroll.pack(fill="both", expand=True)
         self.body = scroll.body
@@ -39,24 +57,104 @@ class RuneMakerWindow(ttk.Frame):
         self.rowconfigure(0, weight=1)
 
         self._build()
+        self._on_mode_change()
 
     # ---------------------------------------------------------------- layout
     def _build(self) -> None:
         body = self.body
-        # Magia e alvo ------------------------------------------------------
-        box_spell = ttk.LabelFrame(body, text="1. Magia e blank runes")
-        box_spell.grid(row=0, column=0, sticky="ew", pady=4)
-        add_field(box_spell, 0, "Tecla da magia", self.var_spell, 8, "hotkey configurada no jogo (ex: f2)")
-        add_field(box_spell, 1, "Quantidade de runas", self.var_amount, 8, "0 = ate acabar a mana")
-
-        ttk.Button(box_spell, text="Selecionar slot da blank rune...", command=self.pick_slot).grid(
-            row=2, column=0, padx=4, pady=6, sticky="w"
+        # Modo ----------------------------------------------------------------
+        box_mode = ttk.LabelFrame(body, text="1. Modo")
+        box_mode.grid(row=0, column=0, sticky="ew", pady=4)
+        self.radio_craft = ttk.Radiobutton(
+            box_mode, text="Criar runas", value="Criar runas", variable=self.var_mode, command=self._on_mode_change
         )
+        self.radio_craft.grid(row=0, column=0, sticky="w", padx=4, pady=3)
+        self.radio_mana_training = ttk.Radiobutton(
+            box_mode,
+            text="ManaTraining (so conjura a magia, sem item)",
+            value="ManaTraining",
+            variable=self.var_mode,
+            command=self._on_mode_change,
+        )
+        self.radio_mana_training.grid(row=0, column=1, sticky="w", padx=4, pady=3)
+        ttk.Label(
+            box_mode,
+            text="⚠ Nao ative os dois ao mesmo tempo - sao modos alternativos, escolha um.",
+            foreground="#a33",
+        ).grid(row=1, column=0, columnspan=2, sticky="w", padx=4, pady=(0, 4))
+
+        # Magia e blank runes -------------------------------------------------
+        box_spell = ttk.LabelFrame(body, text="2. Magia e blank runes")
+        box_spell.grid(row=1, column=0, sticky="ew", pady=4)
+        add_field(box_spell, 0, "Tecla da magia", self.var_spell, 8, "hotkey configurada no jogo (ex: f2)")
+        self.entry_amount = add_field(box_spell, 1, "Quantidade de runas", self.var_amount, 8, "0 = ate acabar a mana")
+
+        self.btn_pick_blank_slot = ttk.Button(
+            box_spell, text="Selecionar slot da blank rune...", command=self.pick_slot
+        )
+        self.btn_pick_blank_slot.grid(row=2, column=0, padx=4, pady=6, sticky="w")
         ttk.Label(box_spell, textvariable=self.var_slot).grid(row=2, column=1, columnspan=2, sticky="w")
 
+        self.chk_no_hand = ttk.Checkbutton(
+            box_spell,
+            text="Servidor nao requer mao (aplicar magia direto no slot da blank rune)",
+            variable=self.var_no_hand,
+            command=self._on_no_hand_toggle,
+        )
+        self.chk_no_hand.grid(row=3, column=0, columnspan=3, sticky="w", padx=4, pady=(6, 3))
+
+        self.btn_pick_hand = ttk.Button(
+            box_spell, text="Selecionar slot da mao...", command=self.pick_hand_slot
+        )
+        self.btn_pick_hand.grid(row=4, column=0, padx=4, pady=3, sticky="w")
+        ttk.Label(box_spell, textvariable=self.var_hand_slot).grid(row=4, column=1, columnspan=2, sticky="w")
+
+        self.btn_pick_output = ttk.Button(
+            box_spell, text="Selecionar slot livre (destino)...", command=self.pick_output_slot
+        )
+        self.btn_pick_output.grid(row=5, column=0, padx=4, pady=3, sticky="w")
+        ttk.Label(box_spell, textvariable=self.var_output_slot).grid(row=5, column=1, columnspan=2, sticky="w")
+
+        # Deteccao de slot vazio -----------------------------------------------
+        box_slots = ttk.LabelFrame(body, text="2.1 Deteccao de slot vazio (template)")
+        box_slots.grid(row=2, column=0, sticky="ew", pady=4)
+        self.btn_capture_blank_empty = ttk.Button(
+            box_slots, text="Capturar slot vazio (origem)...",
+            command=lambda: self._capture_empty_template("blank_slot", "de ORIGEM (blank rune)", self.var_blank_region),
+        )
+        self.btn_capture_blank_empty.grid(row=0, column=0, padx=4, pady=4, sticky="w")
+        ttk.Label(box_slots, textvariable=self.var_blank_region).grid(row=0, column=1, sticky="w", padx=4)
+
+        self.btn_capture_hand_empty = ttk.Button(
+            box_slots, text="Capturar slot vazio (mao)...",
+            command=lambda: self._capture_empty_template("hand_slot", "da MAO", self.var_hand_region),
+        )
+        self.btn_capture_hand_empty.grid(row=1, column=0, padx=4, pady=4, sticky="w")
+        ttk.Label(box_slots, textvariable=self.var_hand_region).grid(row=1, column=1, sticky="w", padx=4)
+
+        self.btn_capture_output_empty = ttk.Button(
+            box_slots, text="Capturar slot vazio (destino)...",
+            command=lambda: self._capture_empty_template("output_slot", "de DESTINO", self.var_output_region),
+        )
+        self.btn_capture_output_empty.grid(row=2, column=0, padx=4, pady=4, sticky="w")
+        ttk.Label(box_slots, textvariable=self.var_output_region).grid(row=2, column=1, sticky="w", padx=4)
+
+        self.entry_empty_threshold = add_field(
+            box_slots, 3, "Cobertura minima do slot vazio (%)", self.var_empty_threshold, 8, "0 a 100 (padrao 90)"
+        )
+
+        actions_slots = ttk.Frame(box_slots)
+        actions_slots.grid(row=4, column=0, columnspan=3, sticky="w", pady=(4, 2))
+        self.chk_dry_run = ttk.Checkbutton(
+            actions_slots, text="Modo teste (dry-run: so loga, nao clica)", variable=self.var_dry_run
+        )
+        self.chk_dry_run.pack(side="left", padx=4)
+        self.btn_test_sequence = ttk.Button(actions_slots, text="Testar sequencia", command=self.test_sequence)
+        self.btn_test_sequence.pack(side="left", padx=8)
+
         # OCR ---------------------------------------------------------------
-        box_ocr = ttk.LabelFrame(body, text="2. Limites de seguranca (OCR)")
-        box_ocr.grid(row=1, column=0, sticky="ew", pady=4)
+        box_ocr = ttk.LabelFrame(body, text="3. Limites de seguranca (OCR)")
+        box_ocr.grid(row=3, column=0, sticky="ew", pady=4)
 
         ttk.Checkbutton(box_ocr, text="Verificar mana", variable=self.var_check_mana).grid(
             row=0, column=0, sticky="w", padx=4, pady=3
@@ -77,15 +175,15 @@ class RuneMakerWindow(ttk.Frame):
         ).grid(row=3, column=1, columnspan=2, padx=4, pady=6, sticky="w")
 
         # Ritmo -------------------------------------------------------------
-        box_rate = ttk.LabelFrame(body, text="3. Ritmo")
-        box_rate.grid(row=2, column=0, sticky="ew", pady=4)
+        box_rate = ttk.LabelFrame(body, text="4. Ritmo")
+        box_rate.grid(row=4, column=0, sticky="ew", pady=4)
         add_field(box_rate, 0, "Delay minimo (s)", self.var_delay_min, 8, ">= cooldown real da magia")
         add_field(box_rate, 1, "Delay maximo (s)", self.var_delay_max, 8, "ex: 2.5")
         add_field(box_rate, 2, "Variacao do clique (px)", self.var_jitter, 8, "+/- pixels")
 
         # Controles ---------------------------------------------------------
-        box_run = ttk.LabelFrame(body, text="4. Execucao")
-        box_run.grid(row=3, column=0, sticky="ew", pady=4)
+        box_run = ttk.LabelFrame(body, text="5. Execucao")
+        box_run.grid(row=5, column=0, sticky="ew", pady=4)
         self.btn_start = ttk.Button(box_run, text="Iniciar", command=self.start)
         self.btn_start.grid(row=0, column=0, padx=4, pady=6)
         self.btn_pause = ttk.Button(box_run, text="Pausar/Retomar", command=self.toggle_pause, state="disabled")
@@ -98,15 +196,46 @@ class RuneMakerWindow(ttk.Frame):
         ttk.Label(box_run, textvariable=self.var_status, font=("Segoe UI", 9, "bold")).grid(
             row=1, column=1, sticky="w"
         )
-        ttk.Label(box_run, text="Runas criadas:").grid(row=1, column=2, sticky="e", padx=4)
+        ttk.Label(box_run, textvariable=self.var_counter_label).grid(row=1, column=2, sticky="e", padx=4)
         ttk.Label(box_run, textvariable=self.var_counter, font=("Segoe UI", 9, "bold")).grid(
             row=1, column=3, sticky="w"
         )
 
         self.log_panel = LogPanel(body, title="Log", height=9)
-        self.log_panel.grid(row=4, column=0, sticky="nsew", pady=4)
+        self.log_panel.grid(row=6, column=0, sticky="nsew", pady=4)
 
         body.columnconfigure(0, weight=1)
+
+    # ------------------------------------------------------------ modo/estado
+    def _on_no_hand_toggle(self) -> None:
+        self._update_field_states()
+
+    def _on_mode_change(self) -> None:
+        is_mana_training = self.var_mode.get() == "ManaTraining"
+        self.var_counter_label.set("Magias conjuradas:" if is_mana_training else "Runas criadas:")
+        self._update_field_states()
+
+    def _update_field_states(self) -> None:
+        """So a tecla da magia (usada por todos os modos) e as secoes 3/4/5
+        continuam sempre ativas. O resto depende do modo escolhido e do
+        checkbox "sem mao"."""
+        mana_training = self.var_mode.get() == "ManaTraining"
+        item_state = "disabled" if mana_training else "normal"
+
+        self.entry_amount.configure(state=item_state)
+        self.btn_pick_blank_slot.configure(state=item_state)
+        self.chk_no_hand.configure(state=item_state)
+        for widget in (
+            self.btn_capture_blank_empty,
+            self.entry_empty_threshold,
+            self.chk_dry_run,
+            self.btn_test_sequence,
+        ):
+            widget.configure(state=item_state)
+
+        hand_state = "disabled" if (mana_training or self.var_no_hand.get()) else "normal"
+        for widget in (self.btn_pick_hand, self.btn_pick_output, self.btn_capture_hand_empty, self.btn_capture_output_empty):
+            widget.configure(state=hand_state)
 
     # --------------------------------------------------------------- selecao
     def pick_slot(self) -> None:
@@ -117,6 +246,22 @@ class RuneMakerWindow(ttk.Frame):
             self.app.config_store.save()
             self.log(f"Slot da blank rune definido: {region_text(point)}")
 
+    def pick_hand_slot(self) -> None:
+        point = self.app.select_point("Clique no slot da MAO do personagem  -  ESC cancela")
+        if point:
+            self.cfg["hand_slot"] = list(point)
+            self.var_hand_slot.set(region_text(point))
+            self.app.config_store.save()
+            self.log(f"Slot da mao definido: {region_text(point)}")
+
+    def pick_output_slot(self) -> None:
+        point = self.app.select_point("Clique no slot LIVRE de destino  -  ESC cancela")
+        if point:
+            self.cfg["output_slot"] = list(point)
+            self.var_output_slot.set(region_text(point))
+            self.app.config_store.save()
+            self.log(f"Slot de destino definido: {region_text(point)}")
+
     def pick_ocr_region(self, key: str) -> None:
         label = "MANA"
         region = self.app.select_region(f"Selecione o numero de {label} na barra de status  -  ESC cancela")
@@ -126,6 +271,23 @@ class RuneMakerWindow(ttk.Frame):
         self.var_mana_region.set(region_text(region))
         self.app.config_store.save()
         self.log(f"Regiao de {label} definida: {region_text(region)}")
+
+    def _capture_empty_template(self, slot_key: str, label: str, region_var: tk.StringVar) -> None:
+        """Recorta o slot VAZIO como referencia pra deteccao por template
+        (mesmo padrao do "Capturar template" do AutoFishing)."""
+        region = self.app.select_region(f"Selecione o slot {label} VAZIO  -  ESC cancela")
+        if not region:
+            return
+        with ScreenCapture() as cap:
+            frame = cap.grab(region)
+        os.makedirs(ASSETS_DIR, exist_ok=True)
+        path = os.path.join(ASSETS_DIR, f"rune_{slot_key}_empty.png")
+        save_image(path, frame)
+        self.cfg[f"{slot_key}_region"] = region
+        self.cfg[f"{slot_key}_empty_template"] = path
+        region_var.set(region_text(region))
+        self.app.config_store.save()
+        self.log(f"Template de slot vazio ({label}) salvo em {path} ({region[2]}x{region[3]} px)")
 
     def test_ocr(self) -> None:
         """Le a mana uma unica vez e mostra o que o Tesseract entendeu."""
@@ -144,6 +306,36 @@ class RuneMakerWindow(ttk.Frame):
             return
         message = f"OCR mana: {value if value is not None else 'nao reconhecido'}"
         self.log(message)
+        messagebox.showinfo("RuneMaker", message)
+
+    def test_sequence(self) -> None:
+        """Roda um ciclo unico de criacao (dry-run ou real) - reaproveita
+        exatamente a mesma logica do worker (`_craft_cycle`/`_simple_craft_cycle`)
+        pra nao ter dois caminhos de codigo divergentes."""
+        self.save_config()
+        if self.cfg.get("mode") == "mana_training":
+            messagebox.showinfo("RuneMaker", "Testar sequencia so se aplica ao modo 'Criar runas'.")
+            return
+
+        dry_run = bool(self.var_dry_run.get())
+        if not dry_run and not messagebox.askyesno(
+            "RuneMaker", "Modo REAL: isso vai clicar/arrastar de verdade. Continuar?"
+        ):
+            return
+
+        try:
+            worker = RuneMakerWorker(dict(self.cfg), self.app.events)
+            worker.setup()
+            if worker.no_hand_mode:
+                ok = worker._simple_craft_cycle(dry_run=dry_run)
+            else:
+                ok = worker._craft_cycle(dry_run=dry_run)
+            worker.teardown()
+        except Exception as exc:
+            messagebox.showerror("RuneMaker", f"Falha no teste: {exc}")
+            return
+
+        message = "Sequencia de teste concluida (ver log)." if ok else "Sequencia de teste falhou em alguma validacao (ver log)."
         messagebox.showinfo("RuneMaker", message)
 
     def install_tesseract(self) -> None:
@@ -184,13 +376,26 @@ class RuneMakerWindow(ttk.Frame):
         self.cfg["min_mana"] = parse_int(self.var_min_mana.get(), 300)
         self.cfg["check_mana"] = bool(self.var_check_mana.get())
         self.cfg["tesseract_cmd"] = self.var_tesseract.get().strip()
+        self.cfg["mode"] = MODE_VALUES.get(self.var_mode.get(), "craft")
+        self.cfg["no_hand_mode"] = bool(self.var_no_hand.get())
+        coverage_pct = max(0, min(100, parse_int(self.var_empty_threshold.get(), 90)))
+        self.cfg["empty_match_threshold"] = coverage_pct / 100
         self.app.config_store.save()
 
     def start(self) -> None:
         self.save_config()
-        if not self.cfg.get("blank_slot"):
-            messagebox.showwarning("RuneMaker", "Selecione o slot da blank rune primeiro.")
-            return
+        mode = self.cfg.get("mode")
+        if mode != "mana_training":
+            if not self.cfg.get("blank_slot"):
+                messagebox.showwarning("RuneMaker", "Selecione o slot da blank rune primeiro.")
+                return
+            if not self.cfg.get("no_hand_mode"):
+                if not self.cfg.get("hand_slot"):
+                    messagebox.showwarning("RuneMaker", "Selecione o slot da mao do personagem primeiro.")
+                    return
+                if not self.cfg.get("output_slot"):
+                    messagebox.showwarning("RuneMaker", "Selecione o slot livre de destino primeiro.")
+                    return
         self.app.start_worker(self.worker_key, RuneMakerWorker, dict(self.cfg))
 
     def toggle_pause(self) -> None:
@@ -209,6 +414,10 @@ class RuneMakerWindow(ttk.Frame):
         self.btn_start.configure(state="disabled" if running else "normal")
         self.btn_pause.configure(state="normal" if running else "disabled")
         self.btn_stop.configure(state="normal" if running else "disabled")
+        lock_state = "disabled" if running else "normal"
+        self.radio_craft.configure(state=lock_state)
+        self.radio_mana_training.configure(state=lock_state)
+        self.chk_no_hand.configure(state=lock_state)
 
     def on_counter(self, value: int) -> None:
         self.var_counter.set(str(value))

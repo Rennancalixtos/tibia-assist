@@ -64,6 +64,20 @@ class BaseWorker(threading.Thread):
         stamp = datetime.now().strftime("%H:%M:%S")
         self.emit("log", f"[{stamp}] {message}")
 
+    def emit_config_update(self, updates: dict) -> None:
+        """Pede pra GUI mesclar `updates` na config persistida (ex:
+        recalibracao automatica). O worker so tem uma COPIA da config (dict
+        raso passado no construtor) - nao pode salvar direto no config.json,
+        so quem tem a referencia real (a aba na thread da GUI) pode."""
+        self.emit("config_update", updates)
+
+    def warn_popup(self, message: str) -> None:
+        """Mostra um popup de alerta - so o log pode passar despercebido se
+        a aba nao estiver visivel. Nunca chama tkinter direto (worker roda
+        numa thread separada); so emite o evento pra fila, a janela
+        principal (thread da GUI) e quem mostra o messagebox de verdade."""
+        self.emit("popup", message)
+
     def bump_counter(self, amount: int = 1) -> None:
         self.counter += amount
         self.emit("counter", self.counter)

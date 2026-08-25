@@ -148,6 +148,10 @@ def sample_hsv_range(frame: np.ndarray, tolerance: tuple[int, int, int] = (10, 6
 
     Usa a mediana de cada canal +/- tolerancia, o que e mais estavel do que a
     media quando o recorte inclui alguns pixels que nao sao agua.
+
+    Devolve (lower, upper, reference_brightness) - o terceiro valor e a
+    mediana do canal V no momento da calibracao, usada depois como baseline
+    pro ajuste dinamico dia/noite (`dynamic_v_bounds`).
     """
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     median = np.median(hsv.reshape(-1, 3), axis=0)
@@ -162,7 +166,33 @@ def sample_hsv_range(frame: np.ndarray, tolerance: tuple[int, int, int] = (10, 6
         int(min(255, median[1] + ts)),
         int(min(255, median[2] + tv)),
     ]
-    return lower, upper
+    return lower, upper, float(median[2])
+
+
+def median_brightness(frame: np.ndarray) -> float:
+    """Mediana do canal V (brilho) da regiao inteira - usada pra medir se a
+    cena ficou mais clara/escura desde a calibracao (ciclo dia/noite)."""
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    return float(np.median(hsv[:, :, 2]))
+
+
+def dynamic_v_bounds(
+    hsv_lower: list[int], hsv_upper: list[int], current_brightness: float, reference_brightness: float
+) -> tuple[list[int], list[int], float]:
+    """Desloca so o canal V (brilho) da faixa calibrada pela diferenca entre
+    o brilho atual da cena e o brilho no momento da calibracao.
+
+    H (matiz) e S (saturacao) da agua mudam pouco entre dia e noite; o que
+    muda e o brilho geral da cena - por isso so o V e ajustado, e H/S ficam
+    exatamente como o usuario calibrou. Devolve (lower_ajustado, upper_ajustado,
+    delta) - `delta` e so pra decidir quando logar a mudanca.
+    """
+    delta = current_brightness - reference_brightness
+    lower = list(hsv_lower)
+    upper = list(hsv_upper)
+    lower[2] = int(max(0, min(255, lower[2] + delta)))
+    upper[2] = int(max(0, min(255, upper[2] + delta)))
+    return lower, upper, delta
 
 
 # --------------------------------------------------------------------------
@@ -177,6 +207,9 @@ class AutoFishingWorker(BaseWorker):
         self.region = self.config.get("region")
         self.mode = self.config.get("detection_mode", "hsv")
         self.template = None
+        self.coordinator = self.config.get("_coordinator")
+        if self.coordinator:
+            self.coordinator.fishing_started()
 
         self.rod_slot = self.config.get("rod_slot")
         if not (isinstance(self.rod_slot, (list, tuple)) and len(self.rod_slot) == 2):
@@ -195,6 +228,20 @@ class AutoFishingWorker(BaseWorker):
 
         self.break_enabled = bool(self.config.get("break_enabled", True))
         self._schedule_next_break()
+
+        # Ajuste dia/noite: desloca o V calibrado pelo delta de brilho da
+        # cena a cada ciclo; None (nunca calibrado com essa versao) desativa
+        # o ajuste e usa o HSV estatico, como antes.
+        self.hsv_reference_brightness = self.config.get("hsv_reference_brightness")
+        self._last_logged_delta = 0.0
+
+        # Recalibracao periodica por EMA (opt-in) - reamostra celulas de alta
+        # confianca e reajusta a faixa calibrada lentamente com o tempo.
+        self.auto_recalibrate_enabled = bool(self.config.get("auto_recalibrate_enabled", False))
+        self.auto_recalibrate_interval_minutes = float(self.config.get("auto_recalibrate_interval_minutes", 15) or 15)
+        self.ema_alpha = float(self.config.get("ema_alpha", 0.15))
+        self._recent_water_pixels: list[np.ndarray] = []
+        self._next_recalibrate_at = time.monotonic() + self.auto_recalibrate_interval_minutes * 60
 
         self.log(
             f"AutoFishing iniciado (modo={self.mode}, regiao={self.region}, "
@@ -229,21 +276,99 @@ class AutoFishingWorker(BaseWorker):
         capture = getattr(self, "capture", None)
         if capture is not None:
             capture.close()
+        if getattr(self, "coordinator", None):
+            self.coordinator.fishing_stopped()
         self.log(f"AutoFishing finalizado. Lances na sessao: {self.counter}.")
 
-    def detect(self, frame: np.ndarray) -> list[tuple[int, int, int]]:
+    def _wait_until_ready(self) -> bool:
+        """Bloqueia enquanto pausado manualmente (F6) OU pausado externamente
+        (RuneMaker pediu a vez via coordinator) - as duas condicoes num so
+        loop de espera, nunca uma depois da outra: se fossem sequenciais, um
+        pause manual travaria aqui sem nunca chegar a confirmar a pausa
+        externa, e o RuneMaker ficaria esperando pra sempre. Devolve False se
+        foi parado."""
+        externally_paused_logged = False
+        while not self.stopped and (
+            self.is_paused or (self.coordinator and self.coordinator.should_fishing_pause())
+        ):
+            if self.coordinator and self.coordinator.should_fishing_pause():
+                if not externally_paused_logged:
+                    self.log("Pausado (RuneMaker esta criando uma runa)...")
+                    externally_paused_logged = True
+                self.coordinator.confirm_fishing_paused()
+            if not self.sleep(0.1):
+                return False
+        if externally_paused_logged:
+            self.log("Retomado apos RuneMaker.")
+        return not self.stopped
+
+    def detect(
+        self, frame: np.ndarray, hsv_lower: list[int] | None = None, hsv_upper: list[int] | None = None
+    ) -> list[tuple[int, int, int]]:
         if self.mode == "template":
             return find_water_template(
                 frame, self.template, self.config.get("template_threshold", 0.80)
             )
         return find_water_tiles_hsv(
             frame,
-            self.config.get("hsv_lower", [90, 60, 40]),
-            self.config.get("hsv_upper", [130, 255, 255]),
+            hsv_lower if hsv_lower is not None else self.config.get("hsv_lower", [90, 60, 40]),
+            hsv_upper if hsv_upper is not None else self.config.get("hsv_upper", [130, 255, 255]),
             int(self.config.get("min_area", 200)),
             int(self.config.get("tile_size", 32)),
             float(self.config.get("min_tile_coverage", 0.35)),
         )
+
+    def _recalibrate_ema(self) -> None:
+        """Reamostra os pixels acumulados de celulas de alta confianca e
+        ajusta a faixa HSV calibrada lentamente (EMA) - so roda se o usuario
+        ligou "Recalibracao automatica periodica"."""
+        if not self._recent_water_pixels:
+            return
+        samples = np.concatenate(self._recent_water_pixels, axis=0)
+        median = np.median(samples, axis=0)  # H, S, V da amostra atual
+        alpha = self.ema_alpha
+
+        hsv_lower = list(self.config.get("hsv_lower", [90, 60, 40]))
+        hsv_upper = list(self.config.get("hsv_upper", [130, 255, 255]))
+        new_lower, new_upper = [], []
+        for i in range(3):
+            span = (hsv_upper[i] - hsv_lower[i]) / 2
+            center = (hsv_upper[i] + hsv_lower[i]) / 2
+            new_center = alpha * float(median[i]) + (1 - alpha) * center
+            ceiling = 179 if i == 0 else 255
+            new_lower.append(int(max(0, new_center - span)))
+            new_upper.append(int(min(ceiling, new_center + span)))
+
+        old_reference = self.hsv_reference_brightness if self.hsv_reference_brightness is not None else float(median[2])
+        new_reference = alpha * float(median[2]) + (1 - alpha) * old_reference
+
+        self.config["hsv_lower"] = new_lower
+        self.config["hsv_upper"] = new_upper
+        self.hsv_reference_brightness = new_reference
+        self.emit_config_update(
+            {"hsv_lower": new_lower, "hsv_upper": new_upper, "hsv_reference_brightness": new_reference}
+        )
+        self.log(f"Recalibracao automatica (EMA): HSV ajustado para {new_lower} - {new_upper}.")
+        self._recent_water_pixels.clear()
+
+    def _collect_recalibration_samples(self, frame: np.ndarray, targets: list[tuple[int, int, int]]) -> None:
+        """Guarda os pixels das celulas com cobertura >=90% pra usar na
+        proxima recalibracao EMA - so as de alta confianca, pra nao
+        "aprender" ruido de falsos positivos."""
+        tile_size = int(self.config.get("tile_size", 32))
+        half = tile_size // 2
+        hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        height, width = hsv_frame.shape[:2]
+        for cx, cy, coverage in targets:
+            if coverage < 90:
+                continue
+            y0, y1 = max(0, cy - half), min(height, cy + half)
+            x0, x1 = max(0, cx - half), min(width, cx + half)
+            if y1 <= y0 or x1 <= x0:
+                continue
+            self._recent_water_pixels.append(hsv_frame[y0:y1, x0:x1].reshape(-1, 3))
+        if len(self._recent_water_pixels) > 200:
+            del self._recent_water_pixels[: len(self._recent_water_pixels) - 200]
 
     def loop(self) -> None:
         max_casts = int(self.config.get("max_casts", 0) or 0)
@@ -255,14 +380,33 @@ class AutoFishingWorker(BaseWorker):
         rod_x, rod_y = int(self.rod_slot[0]), int(self.rod_slot[1])
 
         while not self.stopped:
-            if not self.wait_while_paused():
+            if not self._wait_until_ready():
                 return
 
             if not self.maybe_take_break():
                 return
 
             frame = self.capture.grab(self.region)
-            targets = self.detect(frame)
+
+            effective_lower = effective_upper = None
+            if self.mode != "template" and self.hsv_reference_brightness is not None:
+                hsv_lower = self.config.get("hsv_lower", [90, 60, 40])
+                hsv_upper = self.config.get("hsv_upper", [130, 255, 255])
+                current_brightness = median_brightness(frame)
+                effective_lower, effective_upper, delta = dynamic_v_bounds(
+                    hsv_lower, hsv_upper, current_brightness, self.hsv_reference_brightness
+                )
+                if abs(delta - self._last_logged_delta) > 15:
+                    self.log(f"Brilho da cena mudou (delta V={delta:+.0f}), ajustando deteccao de agua (dia/noite).")
+                    self._last_logged_delta = delta
+
+            targets = self.detect(frame, effective_lower, effective_upper)
+
+            if self.auto_recalibrate_enabled and self.mode != "template":
+                self._collect_recalibration_samples(frame, targets)
+                if time.monotonic() >= self._next_recalibrate_at:
+                    self._recalibrate_ema()
+                    self._next_recalibrate_at = time.monotonic() + self.auto_recalibrate_interval_minutes * 60
 
             if not targets:
                 self.log("Nenhuma tile de agua encontrada na regiao. Aguardando...")

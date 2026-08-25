@@ -13,8 +13,10 @@ from core.screen_capture import ScreenCapture, is_valid_region, load_image, save
 from functions.auto_fishing import (
     AutoFishingWorker,
     draw_tile_grid,
+    dynamic_v_bounds,
     find_water_template,
     find_water_tiles_hsv,
+    median_brightness,
     sample_hsv_range,
 )
 from gui.widgets import LogPanel, ScrollableFrame, add_field, parse_float, parse_int, region_text
@@ -60,6 +62,12 @@ class FishingWindow(ttk.Frame):
         self.var_break_duration_max = tk.StringVar(value=str(self.cfg.get("break_duration_max", 120)))
         self.var_status = tk.StringVar(value="parado")
         self.var_counter = tk.StringVar(value="0")
+
+        self.var_auto_recalibrate = tk.BooleanVar(value=bool(self.cfg.get("auto_recalibrate_enabled", False)))
+        self.var_recalibrate_interval = tk.StringVar(
+            value=str(self.cfg.get("auto_recalibrate_interval_minutes", 15))
+        )
+        self.var_effective_hsv = tk.StringVar(value="HSV efetivo atual: -")
 
         scroll = ScrollableFrame(self)
         scroll.pack(fill="both", expand=True)
@@ -118,8 +126,16 @@ class FishingWindow(ttk.Frame):
             box_detect, 6, "Cobertura minima do SQM (%)", self.var_tile_coverage, 8, "0 a 100"
         )
 
+        ttk.Checkbutton(
+            box_detect, text="Recalibracao automatica periodica (EMA)", variable=self.var_auto_recalibrate
+        ).grid(row=7, column=0, sticky="w", padx=4, pady=3)
+        add_field(box_detect, 8, "Intervalo de recalibracao (min)", self.var_recalibrate_interval, 8, "ex: 15")
+        ttk.Label(box_detect, textvariable=self.var_effective_hsv, foreground="#666").grid(
+            row=9, column=0, columnspan=3, sticky="w", padx=4, pady=(2, 4)
+        )
+
         actions = ttk.Frame(box_detect)
-        actions.grid(row=7, column=0, columnspan=3, sticky="w", pady=(6, 6))
+        actions.grid(row=10, column=0, columnspan=3, sticky="w", pady=(6, 6))
         ttk.Button(actions, text="Calibrar cor da agua...", command=self.calibrate_color).pack(
             side="left", padx=4
         )
@@ -230,12 +246,13 @@ class FishingWindow(ttk.Frame):
             return
         with ScreenCapture() as cap:
             frame = cap.grab(region)
-        lower, upper = sample_hsv_range(frame)
+        lower, upper, reference_brightness = sample_hsv_range(frame)
         self.var_hsv_lower.set(", ".join(map(str, lower)))
         self.var_hsv_upper.set(", ".join(map(str, upper)))
         self.var_mode.set("hsv")
+        self.cfg["hsv_reference_brightness"] = reference_brightness
         self.save_config()
-        self.log(f"Cor calibrada: HSV {lower} - {upper}")
+        self.log(f"Cor calibrada: HSV {lower} - {upper} (brilho de referencia: {reference_brightness:.0f})")
 
     def capture_template(self) -> None:
         """Usuario recorta uma tile de agua; salvamos como template PNG."""
@@ -272,11 +289,24 @@ class FishingWindow(ttk.Frame):
                     "Template de agua nao encontrado. Calibre um template ou use o modo HSV."
                 )
             targets = find_water_template(frame, template, cfg.get("template_threshold", 0.80))
+            self.var_effective_hsv.set("HSV efetivo atual: - (modo template)")
         else:
+            hsv_lower = cfg.get("hsv_lower", [90, 60, 40])
+            hsv_upper = cfg.get("hsv_upper", [130, 255, 255])
+            reference_brightness = cfg.get("hsv_reference_brightness")
+            if reference_brightness is not None:
+                hsv_lower, hsv_upper, delta = dynamic_v_bounds(
+                    hsv_lower, hsv_upper, median_brightness(frame), reference_brightness
+                )
+                self.var_effective_hsv.set(
+                    f"HSV efetivo atual: {hsv_lower} - {hsv_upper}  (delta V={delta:+.0f} vs calibrado)"
+                )
+            else:
+                self.var_effective_hsv.set(f"HSV efetivo atual: {hsv_lower} - {hsv_upper} (sem ajuste dia/noite)")
             targets = find_water_tiles_hsv(
                 frame,
-                cfg.get("hsv_lower", [90, 60, 40]),
-                cfg.get("hsv_upper", [130, 255, 255]),
+                hsv_lower,
+                hsv_upper,
                 int(cfg.get("min_area", 200)),
                 int(cfg.get("tile_size", 32)),
                 float(cfg.get("min_tile_coverage", 0.35)),
@@ -349,7 +379,21 @@ class FishingWindow(ttk.Frame):
         self.cfg["break_interval_max"] = parse_int(self.var_break_interval_max.get(), 300)
         self.cfg["break_duration_min"] = parse_int(self.var_break_duration_min.get(), 10)
         self.cfg["break_duration_max"] = parse_int(self.var_break_duration_max.get(), 120)
+        self.cfg["auto_recalibrate_enabled"] = bool(self.var_auto_recalibrate.get())
+        self.cfg["auto_recalibrate_interval_minutes"] = max(
+            1, parse_int(self.var_recalibrate_interval.get(), 15)
+        )
         self.app.config_store.save()
+
+    def apply_config_update(self, updates: dict) -> None:
+        """Recebe ajustes feitos pelo worker em execucao (recalibracao
+        automatica por EMA) e mantem os campos da GUI sincronizados."""
+        self.cfg.update(updates)
+        self.app.config_store.save()
+        if "hsv_lower" in updates:
+            self.var_hsv_lower.set(", ".join(map(str, updates["hsv_lower"])))
+        if "hsv_upper" in updates:
+            self.var_hsv_upper.set(", ".join(map(str, updates["hsv_upper"])))
 
     def start(self) -> None:
         self.save_config()
