@@ -199,10 +199,6 @@ O script cria o `.venv`, instala as dependências e o PyInstaller, e gera
 faltar alguma dependência ou algo falhar ao abrir a janela, o traceback aparece
 no console em vez de o programa fechar em silêncio.
 
-Os metadados do executável ficam em `version_info.txt` (nome, descrição, autor,
-copyright) — ajuste com o seu nome real. O nome do binário, o ícone e a
-descrição devem dizer honestamente o que o programa é: **não** renomeie para se
-passar por processo do Windows ou de terceiros.
 
 ### Onde ficam os arquivos no executável
 
