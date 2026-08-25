@@ -21,6 +21,7 @@ from core import region_selector
 from core.config import Config
 from core.input_simulator import InputSimulator
 from core.license import LicenseManager
+from core.version import APP_VERSION
 from gui.license_dialog import ensure_license
 
 try:
@@ -30,7 +31,6 @@ except Exception:  # pragma: no cover - pode faltar permissao no Linux
 
 
 APP_NAME = "EasyF"
-APP_VERSION = "1.0.0"
 
 DISCLAIMER = (
     "Aviso: automacao pode violar os termos de uso do servidor/jogo e "

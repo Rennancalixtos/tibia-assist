@@ -61,7 +61,27 @@ esta pagina web para login, apenas para cadastro + inicio do pagamento).
 > localhost:3000/api/stripe/webhook` (Stripe CLI) para receber eventos e
 > obter um signing secret temporario.
 
-## 4. Variaveis de ambiente
+## 4. Token do GitHub (auto-update)
+
+O repositorio do app e privado, entao o auto-update do desktop (que checa
+releases no GitHub) precisa de um token guardado so no servidor - o app
+nunca fala com o GitHub direto.
+
+1. Crie um **fine-grained personal access token** em
+   https://github.com/settings/personal-access-tokens/new.
+2. Em **Repository access**, escolha "Only select repositories" e selecione
+   so este repositorio (`tibia-assist`).
+3. Em **Permissions > Repository permissions**, de **Contents: Read-only**
+   (e so isso - nao precisa de mais nada).
+4. Copie o token gerado -> variavel `GITHUB_TOKEN`.
+5. `GITHUB_REPO` e o repositorio no formato `owner/repo`, ex:
+   `Rennancalixtos/tibia-assist`.
+
+Pra uma versao nova ficar disponivel, crie um **Release** no GitHub (nao so
+uma tag) com o `.exe` buildado (PyInstaller) anexado como asset - o backend
+acha automaticamente o asset que termina em `.exe`.
+
+## 5. Variaveis de ambiente
 
 Copie `.env.example` para `.env.local` e preencha:
 
@@ -72,9 +92,11 @@ SUPABASE_SERVICE_ROLE_KEY=
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 STRIPE_PRICE_ID=
+GITHUB_TOKEN=
+GITHUB_REPO=
 ```
 
-## 5. Rodando localmente
+## 6. Rodando localmente
 
 ```
 npm install
@@ -83,17 +105,18 @@ npm run dev
 
 A pagina inicial (`/`) fica disponivel em `http://localhost:3000`.
 
-## 6. Deploy na Vercel
+## 7. Deploy na Vercel
 
 1. Importe o repositorio na Vercel, apontando o **Root Directory** para
    `backend/`.
 2. Em **Settings > Environment Variables**, adicione as mesmas variaveis do
-   passo 4 (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
-   `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID`).
+   passo 5 (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+   `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID`,
+   `GITHUB_TOKEN`, `GITHUB_REPO`).
 3. Faca o deploy. Depois de publicado, atualize a URL do endpoint de webhook
    no Stripe (passo 3) para a URL final da Vercel, se ainda nao tiver feito.
 
-## 7. Endpoints da API
+## 8. Endpoints da API
 
 Todas as respostas sao JSON. Erros de entrada invalida ou autenticacao
 retornam `{"error": "<mensagem>"}` com status 400 (entrada invalida) ou 401
@@ -117,8 +140,13 @@ retornam `{"error": "<mensagem>"}` com status 400 (entrada invalida) ou 401
 - `GET /api/license/by-session?session_id=...` - usado pela pagina de
   sucesso enquanto o webhook ainda nao processou: `{ready: false}` (202)
   ou `{ready: true, license}` (200).
+- `GET /api/update/latest` - consulta o release mais recente do repo
+  (privado) no GitHub usando `GITHUB_TOKEN`. Devolve
+  `{version, notes, asset_id, asset_name, size}`.
+- `GET /api/update/download?asset_id=...` - repassa (proxy) o binario do
+  asset do GitHub pro app desktop, sem expor o token a ele.
 
-## 8. Configurando o app desktop
+## 9. Configurando o app desktop
 
 No `config.json` do TibiaAssist (raiz do repositorio, fora de `backend/`),
 defina a URL publicada deste backend em `license.api_base_url`, por exemplo:

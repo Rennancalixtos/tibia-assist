@@ -48,12 +48,32 @@ def main() -> int:
 
     from core.config import Config
     from core.license import LicenseManager
+    from core.updater import apply_update, check_for_update
+    from core.version import APP_VERSION
     from gui.app import App
     from gui.license_dialog import run_startup_login
 
-    # TODO: checar atualizacao (GitHub Releases) aqui, antes do login.
-
     config_store = Config()
+
+    # Update -> login -> app. So uma checagem, best-effort: qualquer falha
+    # (sem internet, backend fora do ar) e ignorada e o boot continua normal.
+    api_base_url = config_store.get("license.api_base_url", "")
+    update_info = check_for_update(api_base_url, APP_VERSION)
+    if update_info:
+        notes = (update_info.get("notes") or "").strip()
+        prompt = f"Nova versao disponivel: {update_info['version']} (atual: {APP_VERSION})."
+        if notes:
+            prompt += f"\n\n{notes}"
+        prompt += "\n\nAtualizar agora?"
+        if messagebox.askyesno("Atualizacao disponivel", prompt):
+            if apply_update(api_base_url, update_info):
+                return 0  # o script auxiliar troca o .exe e reabre o programa
+            messagebox.showwarning(
+                "EasyF",
+                "Nao foi possivel baixar/instalar a atualizacao agora. "
+                "Continuando com a versao atual.",
+            )
+
     license_manager = LicenseManager(config_store.section("license"))
 
     # So uma janela por vez: login primeiro (standalone), app depois. Se o
