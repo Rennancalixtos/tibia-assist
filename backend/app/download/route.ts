@@ -22,5 +22,8 @@ export async function GET(request: Request) {
   }
 
   const origin = new URL(request.url).origin;
-  return NextResponse.redirect(`${origin}/api/update/download?asset_id=${release.assetId}`);
+  const assetName = encodeURIComponent(release.assetName);
+  return NextResponse.redirect(
+    `${origin}/api/update/download?asset_id=${release.assetId}&asset_name=${assetName}`
+  );
 }
