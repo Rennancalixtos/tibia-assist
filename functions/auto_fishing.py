@@ -210,9 +210,7 @@ class AutoFishingWorker(BaseWorker):
         self.region = self.config.get("region")
         self.mode = self.config.get("detection_mode", "hsv")
         self.template = None
-        self.coordinator = self.config.get("_coordinator")
-        if self.coordinator:
-            self.coordinator.fishing_started()
+        self.register_with_coordinator("fishing")
 
         self.rod_slot = self.config.get("rod_slot")
         if not (isinstance(self.rod_slot, (list, tuple)) and len(self.rod_slot) == 2):
@@ -279,31 +277,8 @@ class AutoFishingWorker(BaseWorker):
         capture = getattr(self, "capture", None)
         if capture is not None:
             capture.close()
-        if getattr(self, "coordinator", None):
-            self.coordinator.fishing_stopped()
+        self.unregister_from_coordinator()
         self.log(f"AutoFishing finalizado. Lances na sessao: {self.counter}.")
-
-    def _wait_until_ready(self) -> bool:
-        """Bloqueia enquanto pausado manualmente (F6) OU pausado externamente
-        (RuneMaker pediu a vez via coordinator) - as duas condicoes num so
-        loop de espera, nunca uma depois da outra: se fossem sequenciais, um
-        pause manual travaria aqui sem nunca chegar a confirmar a pausa
-        externa, e o RuneMaker ficaria esperando pra sempre. Devolve False se
-        foi parado."""
-        externally_paused_logged = False
-        while not self.stopped and (
-            self.is_paused or (self.coordinator and self.coordinator.should_fishing_pause())
-        ):
-            if self.coordinator and self.coordinator.should_fishing_pause():
-                if not externally_paused_logged:
-                    self.log("Pausado (RuneMaker esta criando uma runa)...")
-                    externally_paused_logged = True
-                self.coordinator.confirm_fishing_paused()
-            if not self.sleep(0.1):
-                return False
-        if externally_paused_logged:
-            self.log("Retomado apos RuneMaker.")
-        return not self.stopped
 
     def detect(
         self, frame: np.ndarray, hsv_lower: list[int] | None = None, hsv_upper: list[int] | None = None
@@ -383,7 +358,7 @@ class AutoFishingWorker(BaseWorker):
         rod_x, rod_y = int(self.rod_slot[0]), int(self.rod_slot[1])
 
         while not self.stopped:
-            if not self._wait_until_ready():
+            if not self.wait_for_higher_priority():
                 return
 
             if not self.maybe_take_break():

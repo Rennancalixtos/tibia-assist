@@ -10,7 +10,7 @@ from core.config import ASSETS_DIR
 from core.screen_capture import ScreenCapture, is_valid_region, save_image
 from functions.rune_maker import OCRUnavailable, RuneMakerWorker, configure_tesseract, read_number
 from gui.mana_overlay import ManaOverlay
-from gui.widgets import LogPanel, ScrollableFrame, add_field, add_hotkey_field, parse_float, parse_int, region_text
+from gui.widgets import ScrollableFrame, add_field, add_hotkey_field, parse_float, parse_int, region_text
 
 MODE_LABELS = {"craft": "Criar runas", "mana_training": "ManaTraining"}
 MODE_VALUES = {label: value for value, label in MODE_LABELS.items()}
@@ -61,13 +61,62 @@ class RuneMakerWindow(ttk.Frame):
         self.mana_overlay.configure_display_point(self.cfg.get("mana_display_point"))
 
         self._build()
+
+        # Dialogo de configuracao (secoes 1 a 4) - construido ja aqui (nao so
+        # no primeiro clique em "Configurar...") pra que os widgets ja
+        # existam quando `_on_mode_change`/`_update_field_states` rodam logo
+        # abaixo (ver `open_config_dialog`).
+        self._config_dialog = tk.Toplevel(self)
+        self._config_dialog.title("Configurar - RuneMaker")
+        self._config_dialog.geometry("640x600")
+        self._config_dialog.transient(self.winfo_toplevel())
+        self._config_dialog.protocol("WM_DELETE_WINDOW", self._hide_config_dialog)
+        config_scroll = ScrollableFrame(self._config_dialog)
+        config_scroll.pack(fill="both", expand=True)
+        self._build_config_dialog(config_scroll.body)
+        self._config_dialog.withdraw()
+
         self._on_mode_change()
 
     # ---------------------------------------------------------------- layout
     def _build(self) -> None:
         body = self.body
+
+        # Execucao ------------------------------------------------------------
+        box_run = ttk.LabelFrame(body, text="1. Execucao")
+        box_run.grid(row=0, column=0, sticky="ew", pady=4)
+        self.btn_start = ttk.Button(box_run, text="Iniciar", command=self.start)
+        self.btn_start.grid(row=0, column=0, padx=4, pady=6)
+        self.btn_pause = ttk.Button(box_run, text="Pausar/Retomar", command=self.toggle_pause, state="disabled")
+        self.btn_pause.grid(row=0, column=1, padx=4)
+        self.btn_stop = ttk.Button(box_run, text="Parar", command=self.stop, state="disabled")
+        self.btn_stop.grid(row=0, column=2, padx=4)
+        self.btn_configure = ttk.Button(box_run, text="Configurar...", command=self.open_config_dialog)
+        self.btn_configure.grid(row=0, column=3, padx=12)
+
+        ttk.Label(box_run, text="Status:").grid(row=1, column=0, sticky="e", padx=4)
+        ttk.Label(box_run, textvariable=self.var_status, font=("Segoe UI", 9, "bold")).grid(
+            row=1, column=1, sticky="w"
+        )
+        ttk.Label(box_run, textvariable=self.var_counter_label).grid(row=1, column=2, sticky="e", padx=4)
+        ttk.Label(box_run, textvariable=self.var_counter, font=("Segoe UI", 9, "bold")).grid(
+            row=1, column=3, sticky="w"
+        )
+
+        body.columnconfigure(0, weight=1)
+
+    def open_config_dialog(self) -> None:
+        self._config_dialog.deiconify()
+        self._config_dialog.lift()
+        self._config_dialog.focus_force()
+
+    def _hide_config_dialog(self) -> None:
+        self._config_dialog.withdraw()
+
+    # ------------------------------------------------------- dialogo de config
+    def _build_config_dialog(self, parent) -> None:
         # Modo ----------------------------------------------------------------
-        box_mode = ttk.LabelFrame(body, text="1. Modo")
+        box_mode = ttk.LabelFrame(parent, text="1. Modo")
         box_mode.grid(row=0, column=0, sticky="ew", pady=4)
         self.radio_craft = ttk.Radiobutton(
             box_mode, text="Criar runas", value="Criar runas", variable=self.var_mode, command=self._on_mode_change
@@ -88,7 +137,7 @@ class RuneMakerWindow(ttk.Frame):
         ).grid(row=1, column=0, columnspan=2, sticky="w", padx=4, pady=(0, 4))
 
         # Magia e blank runes -------------------------------------------------
-        box_spell = ttk.LabelFrame(body, text="2. Magia e blank runes")
+        box_spell = ttk.LabelFrame(parent, text="2. Magia e blank runes")
         box_spell.grid(row=1, column=0, sticky="ew", pady=4)
         add_hotkey_field(box_spell, 0, "Tecla da magia", self.var_spell, 10, "hotkey configurada no jogo (ex: f2)")
         self.entry_amount = add_field(box_spell, 1, "Quantidade de runas", self.var_amount, 8, "0 = ate acabar a mana")
@@ -120,7 +169,7 @@ class RuneMakerWindow(ttk.Frame):
         ttk.Label(box_spell, textvariable=self.var_output_slot).grid(row=5, column=1, columnspan=2, sticky="w")
 
         # Deteccao de slot vazio -----------------------------------------------
-        box_slots = ttk.LabelFrame(body, text="2.1 Deteccao de slot vazio (template)")
+        box_slots = ttk.LabelFrame(parent, text="2.1 Deteccao de slot vazio (template)")
         box_slots.grid(row=2, column=0, sticky="ew", pady=4)
         self.btn_capture_blank_empty = ttk.Button(
             box_slots, text="Capturar slot vazio (origem)...",
@@ -157,7 +206,7 @@ class RuneMakerWindow(ttk.Frame):
         self.btn_test_sequence.pack(side="left", padx=8)
 
         # OCR ---------------------------------------------------------------
-        box_ocr = ttk.LabelFrame(body, text="3. Limites de seguranca (OCR)")
+        box_ocr = ttk.LabelFrame(parent, text="3. Limites de seguranca (OCR)")
         box_ocr.grid(row=3, column=0, sticky="ew", pady=4)
 
         ttk.Checkbutton(box_ocr, text="Verificar mana", variable=self.var_check_mana).grid(
@@ -185,36 +234,19 @@ class RuneMakerWindow(ttk.Frame):
         ).grid(row=4, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 4))
 
         # Ritmo -------------------------------------------------------------
-        box_rate = ttk.LabelFrame(body, text="4. Ritmo")
+        box_rate = ttk.LabelFrame(parent, text="4. Ritmo")
         box_rate.grid(row=4, column=0, sticky="ew", pady=4)
         add_field(box_rate, 0, "Delay minimo (s)", self.var_delay_min, 8, ">= cooldown real da magia")
         add_field(box_rate, 1, "Delay maximo (s)", self.var_delay_max, 8, "ex: 2.5")
         add_field(box_rate, 2, "Variacao do clique (px)", self.var_jitter, 8, "+/- pixels")
 
-        # Controles ---------------------------------------------------------
-        box_run = ttk.LabelFrame(body, text="5. Execucao")
-        box_run.grid(row=5, column=0, sticky="ew", pady=4)
-        self.btn_start = ttk.Button(box_run, text="Iniciar", command=self.start)
-        self.btn_start.grid(row=0, column=0, padx=4, pady=6)
-        self.btn_pause = ttk.Button(box_run, text="Pausar/Retomar", command=self.toggle_pause, state="disabled")
-        self.btn_pause.grid(row=0, column=1, padx=4)
-        self.btn_stop = ttk.Button(box_run, text="Parar", command=self.stop, state="disabled")
-        self.btn_stop.grid(row=0, column=2, padx=4)
-        ttk.Button(box_run, text="Salvar config", command=self.save_config).grid(row=0, column=3, padx=12)
+        # Salvar / Fechar -------------------------------------------------------
+        actions_bar = ttk.Frame(parent)
+        actions_bar.grid(row=5, column=0, sticky="e", pady=(8, 4))
+        ttk.Button(actions_bar, text="Salvar config", command=self.save_config).pack(side="left", padx=4)
+        ttk.Button(actions_bar, text="Fechar", command=self._hide_config_dialog).pack(side="left", padx=4)
 
-        ttk.Label(box_run, text="Status:").grid(row=1, column=0, sticky="e", padx=4)
-        ttk.Label(box_run, textvariable=self.var_status, font=("Segoe UI", 9, "bold")).grid(
-            row=1, column=1, sticky="w"
-        )
-        ttk.Label(box_run, textvariable=self.var_counter_label).grid(row=1, column=2, sticky="e", padx=4)
-        ttk.Label(box_run, textvariable=self.var_counter, font=("Segoe UI", 9, "bold")).grid(
-            row=1, column=3, sticky="w"
-        )
-
-        self.log_panel = LogPanel(body, title="Log", height=9)
-        self.log_panel.grid(row=6, column=0, sticky="nsew", pady=4)
-
-        body.columnconfigure(0, weight=1)
+        parent.columnconfigure(0, weight=1)
 
     # ------------------------------------------------------------ modo/estado
     def _on_no_hand_toggle(self) -> None:
@@ -346,8 +378,10 @@ class RuneMakerWindow(ttk.Frame):
         ):
             return
 
+        cfg = dict(self.cfg)
+        cfg.update(self.app.build_worker_extras())
         try:
-            worker = RuneMakerWorker(dict(self.cfg), self.app.events)
+            worker = RuneMakerWorker(cfg, self.app.events)
             worker.setup()
             if worker.no_hand_mode:
                 ok = worker._simple_craft_cycle(dry_run=dry_run)
@@ -400,7 +434,7 @@ class RuneMakerWindow(ttk.Frame):
 
     # ------------------------------------------------------------- callbacks
     def log(self, message: str) -> None:
-        self.log_panel.append(message)
+        self.app.log(message, source=self.worker_key)
 
     def on_state(self, state: str) -> None:
         self.var_status.set(state)

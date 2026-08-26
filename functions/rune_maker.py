@@ -134,7 +134,7 @@ class RuneMakerWorker(BaseWorker):
             background_hwnd=self.config.get("_background_hwnd"),
             on_fallback=self.log,
         )
-        self.coordinator = self.config.get("_coordinator")
+        self.register_with_coordinator("runemaker")
         self._pause_failures = 0
         self._cycle_failures = 0
 
@@ -182,6 +182,7 @@ class RuneMakerWorker(BaseWorker):
         capture = getattr(self, "capture", None)
         if capture is not None:
             capture.close()
+        self.unregister_from_coordinator()
         label = "Magias conjuradas" if self.mode == "mana_training" else "Runas criadas"
         self.log(f"RuneMaker finalizado. {label} na sessao: {self.counter}.")
 
@@ -245,26 +246,19 @@ class RuneMakerWorker(BaseWorker):
         return self.sleep(InputSimulator.random_delay(0.10, 0.25))
 
     # -------------------------------------------------------- pausa mutua
-    def _request_fishing_pause(self) -> bool:
-        if not self.coordinator or not self.coordinator.fishing_active:
-            return True
-        self.log("Pausando AutoFishing para agir...")
-        if self.coordinator.request_pause_for_runemaker(timeout=5.0):
+    def _request_action_floor(self) -> bool:
+        if self.request_floor(timeout=5.0):
             self._pause_failures = 0
             return True
         self._pause_failures += 1
         if self._pause_failures >= 3:
             self.log(
-                "ERRO: AutoFishing nao libera a pausa ha varias tentativas - "
-                "verifique o estado do AutoFishing."
+                "ERRO: uma rotina de prioridade menor nao libera a vez ha varias "
+                "tentativas - verifique o estado das outras abas."
             )
         else:
-            self.log("AVISO: AutoFishing nao confirmou a pausa a tempo - tentando de novo no proximo ciclo.")
+            self.log("AVISO: outra rotina nao confirmou a pausa a tempo - tentando de novo no proximo ciclo.")
         return False
-
-    def _release_fishing_pause(self) -> None:
-        if self.coordinator:
-            self.coordinator.release_pause_for_runemaker()
 
     # ------------------------------------------------------------------ ciclo
     def loop(self) -> None:
@@ -275,7 +269,7 @@ class RuneMakerWorker(BaseWorker):
 
     def _mana_training_loop(self) -> None:
         while not self.stopped:
-            if not self.wait_while_paused():
+            if not self.wait_for_higher_priority():
                 return
 
             try:
@@ -287,14 +281,14 @@ class RuneMakerWorker(BaseWorker):
                 self.log(f"ERRO de OCR: {exc}")
                 return
 
-            if not self._request_fishing_pause():
+            if not self._request_action_floor():
                 if not self.sleep(1.0):
                     return
                 continue
             try:
                 self.mouse.press_key(self.spell_hotkey)
             finally:
-                self._release_fishing_pause()
+                self.release_floor()
 
             self.bump_counter()
             self.log(f"Magia #{self.counter} conjurada (tecla {self.spell_hotkey}) - ManaTraining.")
@@ -309,7 +303,7 @@ class RuneMakerWorker(BaseWorker):
         target_amount = int(self.config.get("amount", 0) or 0)
 
         while not self.stopped:
-            if not self.wait_while_paused():
+            if not self.wait_for_higher_priority():
                 return
 
             try:
@@ -327,14 +321,14 @@ class RuneMakerWorker(BaseWorker):
                 self.pause()
                 continue
 
-            if not self._request_fishing_pause():
+            if not self._request_action_floor():
                 if not self.sleep(1.0):
                     return
                 continue
             try:
                 ok = self._simple_craft_cycle() if self.no_hand_mode else self._craft_cycle()
             finally:
-                self._release_fishing_pause()
+                self.release_floor()
 
             if self.stopped:
                 return

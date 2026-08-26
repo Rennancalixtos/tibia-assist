@@ -22,6 +22,12 @@ from tkinter import ttk
 
 from core.license import LicenseManager
 
+# Cooldown minimo (segundos) entre tentativas de login/cadastro - evita
+# martelar a API do backend com cliques repetidos (engano do usuario ou
+# tentativa de forca bruta de senha). Vale pros dois botoes juntos, ja que
+# ambos batem no mesmo backend pequeno.
+RATE_LIMIT_SECONDS = 3
+
 
 class _LoginForm:
     """Mixin com o formulario de login/cadastro e os handlers dos botoes.
@@ -53,9 +59,12 @@ class _LoginForm:
 
         actions = ttk.Frame(body)
         actions.grid(row=5, column=0, columnspan=2, sticky="ew")
-        ttk.Button(actions, text="Entrar", command=self._login).pack(side="left")
-        ttk.Button(actions, text="Cadastrar...", command=self._signup).pack(side="left", padx=8)
+        self.btn_login = ttk.Button(actions, text="Entrar", command=self._login)
+        self.btn_login.pack(side="left")
+        self.btn_signup = ttk.Button(actions, text="Cadastrar...", command=self._signup)
+        self.btn_signup.pack(side="left", padx=8)
         ttk.Button(actions, text="Sair", command=self._cancel).pack(side="right")
+        self._cooldown_job = None
 
         hint = ttk.Label(
             body,
@@ -77,10 +86,34 @@ class _LoginForm:
             return None
         return email, password
 
+    # ------------------------------------------------------------- rate limit
+    def _start_cooldown(self) -> None:
+        """Desativa Entrar/Cadastrar por `RATE_LIMIT_SECONDS` - chamado so
+        depois que a chamada ao backend termina (nao antes), pra garantir o
+        intervalo minimo de verdade entre uma tentativa e a proxima, em vez
+        de descontar do cooldown o tempo que a propria chamada levou."""
+        if self._cooldown_job is not None:
+            self.after_cancel(self._cooldown_job)
+        self.btn_login.configure(state="disabled")
+        self.btn_signup.configure(state="disabled")
+        self._cooldown_job = self.after(RATE_LIMIT_SECONDS * 1000, self._end_cooldown)
+
+    def _end_cooldown(self) -> None:
+        self._cooldown_job = None
+        try:
+            self.btn_login.configure(state="normal")
+            self.btn_signup.configure(state="normal")
+        except tk.TclError:
+            pass  # janela ja fechada antes do cooldown acabar
+
     def _login(self) -> None:
+        if self._cooldown_job is not None:
+            return  # cooldown ativo - o "Enter" nao passa pelo estado disabled do botao
         creds = self._credentials()
         if creds is None:
             return
+        self.btn_login.configure(state="disabled")
+        self.btn_signup.configure(state="disabled")
         self.var_message.set("Entrando...")
         self.update_idletasks()
         ok = self.license_manager.login(*creds)
@@ -88,14 +121,19 @@ class _LoginForm:
         if ok:
             self.accepted = True
             self.destroy()
-        else:
-            self.var_message.set(self.license_manager.message or "Nao foi possivel entrar.")
-            self._maybe_offer_checkout()
+            return
+        self.var_message.set(self.license_manager.message or "Nao foi possivel entrar.")
+        self._maybe_offer_checkout()
+        self._start_cooldown()
 
     def _signup(self) -> None:
+        if self._cooldown_job is not None:
+            return  # cooldown ativo
         creds = self._credentials()
         if creds is None:
             return
+        self.btn_login.configure(state="disabled")
+        self.btn_signup.configure(state="disabled")
         self.var_message.set("Cadastrando...")
         self.update_idletasks()
         self.license_manager.signup(*creds)
@@ -109,6 +147,7 @@ class _LoginForm:
             )
         else:
             self.var_message.set(self.license_manager.message or "Nao foi possivel iniciar o pagamento.")
+        self._start_cooldown()
 
     def _maybe_offer_checkout(self) -> None:
         """Se o login funcionou mas nao ha assinatura ativa, oferece o checkout."""
@@ -125,6 +164,9 @@ class _LoginForm:
             )
 
     def _cancel(self) -> None:
+        if self._cooldown_job is not None:
+            self.after_cancel(self._cooldown_job)
+            self._cooldown_job = None
         self.accepted = False
         self.destroy()
 

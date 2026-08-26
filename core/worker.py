@@ -26,6 +26,8 @@ class BaseWorker(threading.Thread):
         self._resume_event = threading.Event()
         self._resume_event.set()  # comeca despausado
         self.counter = 0
+        self.coordinator = None
+        self._coordinator_name: str | None = None
 
     # ------------------------------------------------------------- controles
     def stop(self) -> None:
@@ -101,6 +103,54 @@ class BaseWorker(threading.Thread):
             if self.stopped:
                 return False
         return not self.stopped
+
+    # ------------------------------------------------------- coordenador (N vias)
+    def register_with_coordinator(self, name: str) -> None:
+        """Registra esta rotina como ativa no `AutomationCoordinator`
+        (ver core/coordinator.py) sob `name` - usado tanto para saber quem
+        pausar quando outra rotina pede a vez, quanto para saber a quem
+        pedir a vez antes de agir."""
+        self.coordinator = self.config.get("_coordinator")
+        self._coordinator_name = name
+        if self.coordinator:
+            self.coordinator.started(name)
+
+    def unregister_from_coordinator(self) -> None:
+        if self.coordinator and self._coordinator_name:
+            self.coordinator.stopped(self._coordinator_name)
+
+    def wait_for_higher_priority(self) -> bool:
+        """Bloqueia enquanto pausado manualmente OU enquanto uma rotina de
+        prioridade maior estiver com a vez (coordinator.should_pause) - as
+        duas condicoes num so loop de espera, nunca uma depois da outra (um
+        pause manual nao pode travar aqui sem nunca confirmar a pausa
+        externa). Devolve False se foi parado."""
+        name = self._coordinator_name
+        externally_paused_logged = False
+        while not self.stopped and (
+            self.is_paused or (self.coordinator and name and self.coordinator.should_pause(name))
+        ):
+            if self.coordinator and name and self.coordinator.should_pause(name):
+                if not externally_paused_logged:
+                    self.log("Pausado (outra rotina esta agindo)...")
+                    externally_paused_logged = True
+                self.coordinator.confirm_paused(name)
+            if not self.sleep(0.1):
+                return False
+        if externally_paused_logged:
+            self.log("Retomado.")
+        return not self.stopped
+
+    def request_floor(self, timeout: float = 5.0) -> bool:
+        """Pede a vez a toda rotina ativa de prioridade menor antes de agir.
+        Devolve True se liberado (ou se nao havia ninguem para pausar)."""
+        if not self.coordinator or not self._coordinator_name:
+            return True
+        return self.coordinator.request_floor(self._coordinator_name, timeout=timeout)
+
+    def release_floor(self) -> None:
+        if self.coordinator and self._coordinator_name:
+            self.coordinator.release_floor(self._coordinator_name)
 
     # ------------------------------------------------------------------ ciclo
     def run(self) -> None:  # pragma: no cover - integracao
