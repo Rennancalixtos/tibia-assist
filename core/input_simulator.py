@@ -155,6 +155,15 @@ class InputSimulator:
             pyautogui.click(x=tx, y=ty, button=button)
         return tx, ty
 
+    def double_click(self, x: int, y: int, jitter: int = 0) -> tuple[int, int]:
+        """Clique duplo (dois `click` da esquerda em sequencia rapida) - o
+        segundo clique reaproveita a mesma posicao (sem jitter de novo) para
+        garantir que os dois caiam no mesmo alvo, como um duplo-clique real."""
+        tx, ty = self.click(x, y, button="left", jitter=jitter)
+        time.sleep(random.uniform(0.05, 0.12))
+        self.click(tx, ty, button="left", jitter=0)
+        return tx, ty
+
     def drag(
         self,
         from_x: int,
@@ -228,6 +237,18 @@ class InputSimulator:
             pyautogui.press(key)
 
     # ----------------------------------------------------------------- utils
+    def is_using_real_mouse(self) -> bool:
+        """True se cliques desta instancia mexem o cursor real (nao esta em
+        modo background, ou o modo background ja falhou e caiu pro real) -
+        usado por quem le a tela DEPOIS de clicar pra saber se precisa
+        devolver o cursor pra nao ficar "em cima" do que acabou de clicar
+        (ex: hover mudando a cor de um elemento de UI que o codigo le)."""
+        return not self._background_ready()
+
+    @staticmethod
+    def current_position() -> tuple[int, int]:
+        return pyautogui.position()
+
     @staticmethod
     def random_delay(minimum: float, maximum: float) -> float:
         """Sorteia um intervalo entre `minimum` e `maximum` segundos."""

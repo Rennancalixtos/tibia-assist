@@ -20,11 +20,13 @@ from tkinter import messagebox, ttk
 from core import background_input, region_selector
 from core.config import Config
 from core.coordinator import AutomationCoordinator
+from core.elevation import is_admin
 from core.input_simulator import InputSimulator
 from core.license import LicenseManager
 from core.version import APP_VERSION
 from gui.license_dialog import ensure_license
-from gui.widgets import HotkeyButton
+from gui.settings_dialog import SettingsDialog
+from gui.widgets import LogPanel
 
 try:
     import keyboard  # hotkeys globais (funciona com a janela do jogo em foco)
@@ -38,6 +40,13 @@ DISCLAIMER = (
     "Aviso: automacao pode violar os termos de uso do servidor/jogo e "
     "resultar em banimento. O uso e responsabilidade do usuario."
 )
+
+TAB_LABELS = {
+    "fishing": "AutoFishing",
+    "runemaker": "RuneMaker",
+    "target": "Target",
+    "training": "Training",
+}
 
 
 class App(tk.Tk):
@@ -59,6 +68,7 @@ class App(tk.Tk):
         self.logout_requested = False
         self.coordinator = AutomationCoordinator()
 
+        self._init_settings_vars()
         self._build()
         self._register_hotkeys()
 
@@ -67,6 +77,36 @@ class App(tk.Tk):
 
         self._schedule_license_check()
         self._schedule_heartbeat()
+
+    # ------------------------------------------------------------ config vars
+    def _init_settings_vars(self) -> None:
+        """Cria as variaveis de hotkeys/modo background ja no __init__, antes
+        do dialogo de configuracoes (gui/settings_dialog.py) existir -
+        `_register_hotkeys` roda logo em seguida, no __init__, e precisa
+        delas prontas mesmo sem nenhum widget do dialogo construido ainda."""
+        hk = self.config_store.section("hotkeys")
+        self.var_pause_key = tk.StringVar(value=hk.get("pause", "pause"))
+        self.var_stop_key = tk.StringVar(value=hk.get("stop", "f7"))
+        self.var_hotkeys_on = tk.BooleanVar(value=bool(hk.get("enabled", True)))
+        self.var_hotkey_status = tk.StringVar(value="")
+
+        bgcfg = self.config_store.section("background_mode")
+        self.var_background_enabled = tk.BooleanVar(value=bool(bgcfg.get("enabled", False)))
+        self.var_background_window = tk.StringVar(value=bgcfg.get("window_title", ""))
+        self.var_background_status = tk.StringVar(value="")
+
+        self._settings_dialog: SettingsDialog | None = None
+
+    def open_settings(self) -> None:
+        """Abre o dialogo de configuracoes (hotkeys globais + modo
+        background). Reaproveita a janela se ja estiver aberta, em vez de
+        duplicar - so cria de novo se foi fechada (Toplevel destruido)."""
+        dialog = self._settings_dialog
+        if dialog is not None and dialog.winfo_exists():
+            dialog.lift()
+            dialog.focus_force()
+            return
+        self._settings_dialog = SettingsDialog(self)
 
     # ---------------------------------------------------------------- layout
     def _build(self) -> None:
@@ -78,60 +118,10 @@ class App(tk.Tk):
             account_bar, textvariable=self.var_account_info, foreground="#0a5", font=("Segoe UI", 9, "bold")
         ).pack(side="left", anchor="w")
         ttk.Button(account_bar, text="Sair da conta", command=self.logout).pack(side="right")
+        ttk.Button(
+            account_bar, text="⚙ Configurações...", command=self.open_settings
+        ).pack(side="right", padx=(0, 8))
         self._tick_account_info()
-
-        # Barra de hotkeys globais -----------------------------------------
-        top = ttk.LabelFrame(self, text="Hotkeys globais", padding=6)
-        top.pack(fill="x", padx=8, pady=(8, 4))
-
-        hk = self.config_store.section("hotkeys")
-        self.var_pause_key = tk.StringVar(value=hk.get("pause", "pause"))
-        self.var_stop_key = tk.StringVar(value=hk.get("stop", "f7"))
-        self.var_hotkeys_on = tk.BooleanVar(value=bool(hk.get("enabled", True)))
-
-        ttk.Label(top, text="Pausar/Retomar").grid(row=0, column=0, sticky="w", padx=4)
-        HotkeyButton(top, self.var_pause_key, width=10).grid(row=0, column=1, padx=4)
-        ttk.Label(top, text="Parar tudo").grid(row=0, column=2, sticky="w", padx=4)
-        HotkeyButton(top, self.var_stop_key, width=10).grid(row=0, column=3, padx=4)
-        ttk.Checkbutton(top, text="ativas", variable=self.var_hotkeys_on).grid(row=0, column=4, padx=8)
-        ttk.Button(top, text="Aplicar", command=self._apply_hotkeys).grid(row=0, column=5, padx=4)
-        ttk.Button(top, text="Parar tudo agora", command=self.stop_all).grid(row=0, column=6, padx=12)
-
-        self.var_hotkey_status = tk.StringVar(value="")
-        ttk.Label(top, textvariable=self.var_hotkey_status, foreground="#666").grid(
-            row=1, column=0, columnspan=7, sticky="w", padx=4, pady=(4, 0)
-        )
-
-        # Modo background (PostMessage, sem mover o mouse real) -------------
-        bg = ttk.LabelFrame(self, text="Modo background", padding=6)
-        bg.pack(fill="x", padx=8, pady=(0, 4))
-
-        bgcfg = self.config_store.section("background_mode")
-        self.var_background_enabled = tk.BooleanVar(value=bool(bgcfg.get("enabled", False)))
-        self.var_background_window = tk.StringVar(value=bgcfg.get("window_title", ""))
-
-        ttk.Checkbutton(
-            bg, text="Nao usar o mouse real (PostMessage direto pra janela do jogo)",
-            variable=self.var_background_enabled,
-        ).grid(row=0, column=0, columnspan=3, sticky="w", padx=4)
-        ttk.Label(bg, text="Janela:").grid(row=1, column=0, sticky="w", padx=4, pady=(4, 0))
-        ttk.Entry(bg, textvariable=self.var_background_window, width=32, state="readonly").grid(
-            row=1, column=1, sticky="w", pady=(4, 0)
-        )
-        ttk.Button(bg, text="Selecionar janela do jogo...", command=self._pick_background_window).grid(
-            row=1, column=2, padx=8, pady=(4, 0)
-        )
-        ttk.Button(bg, text="Testar clique em background...", command=self._test_background_click).grid(
-            row=2, column=0, columnspan=2, sticky="w", padx=4, pady=(4, 0)
-        )
-        ttk.Button(bg, text="Aplicar", command=self._apply_background_mode).grid(
-            row=2, column=2, padx=8, pady=(4, 0)
-        )
-
-        self.var_background_status = tk.StringVar(value="")
-        ttk.Label(bg, textvariable=self.var_background_status, foreground="#666", wraplength=700).grid(
-            row=3, column=0, columnspan=3, sticky="w", padx=4, pady=(4, 0)
-        )
 
         # Abas ---------------------------------------------------------------
         notebook = ttk.Notebook(self)
@@ -140,13 +130,26 @@ class App(tk.Tk):
         # Import tardio para evitar dependencia circular entre app e abas.
         from gui.fishing_window import FishingWindow
         from gui.runemaker_window import RuneMakerWindow
+        from gui.target_window import TargetWindow
+        from gui.training_window import TrainingWindow
 
         self.tabs = {
             "fishing": FishingWindow(notebook, self),
             "runemaker": RuneMakerWindow(notebook, self),
+            "target": TargetWindow(notebook, self),
+            "training": TrainingWindow(notebook, self),
         }
         notebook.add(self.tabs["fishing"], text="AutoFishing")
         notebook.add(self.tabs["runemaker"], text="RuneMaker")
+        notebook.add(self.tabs["target"], text="Target")
+        notebook.add(self.tabs["training"], text="Training")
+
+        # Log central ----------------------------------------------------------
+        # Uma unica caixa de log pra todas as abas (em vez de uma por aba) -
+        # com varias rotinas rodando ao mesmo tempo (coordenador), ver tudo
+        # junto, em ordem cronologica, importa mais do que ver por aba.
+        self.shared_log = LogPanel(self, title="Log", height=10)
+        self.shared_log.pack(fill="x", padx=8, pady=(0, 4))
 
         # Rodape -------------------------------------------------------------
         footer = ttk.Frame(self, padding=(8, 4))
@@ -154,12 +157,24 @@ class App(tk.Tk):
         ttk.Label(footer, text=DISCLAIMER, foreground="#a33", wraplength=720, justify="left").pack(
             anchor="w"
         )
+        admin_ok = is_admin()
         ttk.Label(
             footer,
             text=f"Input: {InputSimulator.backend_name()}  |  "
+            f"Administrador: {'Sim' if admin_ok else 'Nao'}  |  "
             f"Escape de emergencia: mova o mouse para o canto superior esquerdo da tela.",
-            foreground="#666",
+            foreground="#666" if admin_ok else "#a33",
         ).pack(anchor="w", pady=(2, 0))
+        if not admin_ok:
+            ttk.Label(
+                footer,
+                text="⚠ Sem privilegio de administrador: clique/tecla sintetico pode nao ter "
+                "efeito se o cliente do jogo rodar elevado. Feche e abra o programa de novo "
+                "aceitando o pedido de elevacao (UAC) do Windows.",
+                foreground="#a33",
+                wraplength=720,
+                justify="left",
+            ).pack(anchor="w", pady=(2, 0))
 
     # -------------------------------------------------------------- hotkeys
     def _register_hotkeys(self) -> None:
@@ -392,6 +407,20 @@ class App(tk.Tk):
         self.destroy()
 
     # ---------------------------------------------------------------- workers
+    def build_worker_extras(self) -> dict:
+        """Extras injetados em toda config de worker (`_coordinator` e
+        `_background_hwnd`) - usado tanto pelo `start_worker` de verdade
+        quanto pelos botoes de "Testar..." das abas, pra que um teste se
+        comporte identico a rodar de verdade (mesmo modo de input). Sem
+        isso, um teste monta o worker so com `dict(self.cfg)` e cai sempre
+        no mouse real, mesmo com "Modo background" ligado."""
+        extras = {"_coordinator": self.coordinator}
+        if self.config_store.get("background_mode.enabled", False):
+            extras["_background_hwnd"] = self._resolve_background_hwnd()
+        else:
+            extras["_background_hwnd"] = None
+        return extras
+
     def start_worker(self, key: str, worker_class, cfg: dict) -> None:
         if not ensure_license(self, self.license, self._save_license):
             messagebox.showwarning(APP_NAME, "E necessaria uma licenca ativa para iniciar.")
@@ -402,11 +431,7 @@ class App(tk.Tk):
             messagebox.showinfo(APP_NAME, "Esta rotina ja esta em execucao.")
             return
         cfg = dict(cfg)
-        cfg["_coordinator"] = self.coordinator
-        if self.config_store.get("background_mode.enabled", False):
-            cfg["_background_hwnd"] = self._resolve_background_hwnd()
-        else:
-            cfg["_background_hwnd"] = None
+        cfg.update(self.build_worker_extras())
         worker = worker_class(cfg, self.events)
         self.workers[key] = worker
         worker.start()
@@ -432,6 +457,15 @@ class App(tk.Tk):
             return
         for worker in running:
             worker.toggle_pause()
+
+    # -------------------------------------------------------------------- log
+    def log(self, message: str, source: str = "app") -> None:
+        """Log central: toda aba chama isso (via `self.app.log(...)` no
+        proprio metodo `log` da aba) em vez de manter uma caixa de log
+        propria - com varias rotinas rodando juntas, ver tudo intercalado
+        importa mais do que ver por aba."""
+        label = TAB_LABELS.get(source, source)
+        self.shared_log.append(f"[{label}] {message}")
 
     # ----------------------------------------------------------------- eventos
     def _pump_events(self) -> None:
@@ -466,6 +500,10 @@ class App(tk.Tk):
                     on_reading = getattr(tab, "on_mana_reading", None)
                     if on_reading:
                         on_reading(payload)
+                elif kind == "elapsed":
+                    on_elapsed = getattr(tab, "on_elapsed", None)
+                    if on_elapsed:
+                        on_elapsed(payload)
         except queue.Empty:
             pass
         finally:

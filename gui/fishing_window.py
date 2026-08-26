@@ -19,7 +19,7 @@ from functions.auto_fishing import (
     median_brightness,
     sample_hsv_range,
 )
-from gui.widgets import LogPanel, ScrollableFrame, add_field, parse_float, parse_int, region_text
+from gui.widgets import ScrollableFrame, add_field, parse_float, parse_int, region_text
 
 # O worker/InputSimulator so reconhecem os valores internos "right"/"left" -
 # esse mapeamento so existe para exibir rotulos em portugues na interface.
@@ -77,11 +77,58 @@ class FishingWindow(ttk.Frame):
 
         self._build()
 
+        # Dialogo de configuracao (secoes 1 a 5) - construido ja aqui (nao so
+        # no primeiro clique em "Configurar...") pra ficar sempre escondido
+        # ate ser aberto, em vez de recriado toda vez (ver `open_config_dialog`).
+        self._config_dialog = tk.Toplevel(self)
+        self._config_dialog.title("Configurar - AutoFishing")
+        self._config_dialog.geometry("640x600")
+        self._config_dialog.transient(self.winfo_toplevel())
+        self._config_dialog.protocol("WM_DELETE_WINDOW", self._hide_config_dialog)
+        config_scroll = ScrollableFrame(self._config_dialog)
+        config_scroll.pack(fill="both", expand=True)
+        self._build_config_dialog(config_scroll.body)
+        self._config_dialog.withdraw()
+
     # ---------------------------------------------------------------- layout
     def _build(self) -> None:
         body = self.body
+
+        # Execucao ------------------------------------------------------------
+        box_run = ttk.LabelFrame(body, text="1. Execucao")
+        box_run.grid(row=0, column=0, sticky="ew", pady=4)
+        self.btn_start = ttk.Button(box_run, text="Iniciar", command=self.start)
+        self.btn_start.grid(row=0, column=0, padx=4, pady=6)
+        self.btn_pause = ttk.Button(box_run, text="Pausar/Retomar", command=self.toggle_pause, state="disabled")
+        self.btn_pause.grid(row=0, column=1, padx=4)
+        self.btn_stop = ttk.Button(box_run, text="Parar", command=self.stop, state="disabled")
+        self.btn_stop.grid(row=0, column=2, padx=4)
+        self.btn_configure = ttk.Button(box_run, text="Configurar...", command=self.open_config_dialog)
+        self.btn_configure.grid(row=0, column=3, padx=12)
+
+        ttk.Label(box_run, text="Status:").grid(row=1, column=0, sticky="e", padx=4)
+        ttk.Label(box_run, textvariable=self.var_status, font=("Segoe UI", 9, "bold")).grid(
+            row=1, column=1, sticky="w"
+        )
+        ttk.Label(box_run, text="Lances na sessao:").grid(row=1, column=2, sticky="e", padx=4)
+        ttk.Label(box_run, textvariable=self.var_counter, font=("Segoe UI", 9, "bold")).grid(
+            row=1, column=3, sticky="w"
+        )
+
+        body.columnconfigure(0, weight=1)
+
+    def open_config_dialog(self) -> None:
+        self._config_dialog.deiconify()
+        self._config_dialog.lift()
+        self._config_dialog.focus_force()
+
+    def _hide_config_dialog(self) -> None:
+        self._config_dialog.withdraw()
+
+    # ------------------------------------------------------- dialogo de config
+    def _build_config_dialog(self, parent) -> None:
         # Vara de pescar ------------------------------------------------------
-        box_rod = ttk.LabelFrame(body, text="1. Vara de pescar")
+        box_rod = ttk.LabelFrame(parent, text="1. Vara de pescar")
         box_rod.grid(row=0, column=0, sticky="ew", pady=4)
         box_rod.columnconfigure(1, weight=1)
         ttk.Button(box_rod, text="Selecionar posicao da vara...", command=self.pick_rod_slot).grid(
@@ -90,7 +137,7 @@ class FishingWindow(ttk.Frame):
         ttk.Label(box_rod, textvariable=self.var_rod_slot).grid(row=0, column=1, sticky="w")
 
         # Regiao monitorada -------------------------------------------------
-        box_region = ttk.LabelFrame(body, text="2. Regiao monitorada (lago)")
+        box_region = ttk.LabelFrame(parent, text="2. Regiao monitorada (lago)")
         box_region.grid(row=1, column=0, sticky="ew", pady=4)
         box_region.columnconfigure(1, weight=1)
         ttk.Button(box_region, text="Selecionar regiao...", command=self.pick_region).grid(
@@ -99,7 +146,7 @@ class FishingWindow(ttk.Frame):
         ttk.Label(box_region, textvariable=self.var_region).grid(row=0, column=1, sticky="w")
 
         # Deteccao ----------------------------------------------------------
-        box_detect = ttk.LabelFrame(body, text="3. Deteccao de agua")
+        box_detect = ttk.LabelFrame(parent, text="3. Deteccao de agua")
         box_detect.grid(row=2, column=0, sticky="ew", pady=4)
 
         ttk.Label(box_detect, text="Modo").grid(row=0, column=0, sticky="w", padx=4, pady=3)
@@ -150,7 +197,7 @@ class FishingWindow(ttk.Frame):
         )
 
         # Clique e ritmo ----------------------------------------------------
-        box_click = ttk.LabelFrame(body, text="4. Clique e ritmo")
+        box_click = ttk.LabelFrame(parent, text="4. Clique e ritmo")
         box_click.grid(row=3, column=0, sticky="ew", pady=4)
 
         ttk.Label(box_click, text="Botao na agua").grid(row=0, column=0, sticky="w", padx=4, pady=3)
@@ -178,7 +225,7 @@ class FishingWindow(ttk.Frame):
         ).grid(row=5, column=0, columnspan=3, sticky="w", padx=4, pady=3)
 
         # Pausas periodicas ---------------------------------------------------
-        box_break = ttk.LabelFrame(body, text="5. Pausas periodicas (descanso)")
+        box_break = ttk.LabelFrame(parent, text="5. Pausas periodicas (descanso)")
         box_break.grid(row=4, column=0, sticky="ew", pady=4)
         ttk.Checkbutton(
             box_break, text="Ativar pausas periodicas", variable=self.var_break_enabled
@@ -196,31 +243,13 @@ class FishingWindow(ttk.Frame):
             box_break, 4, "Pausa maxima (s)", self.var_break_duration_max, 8, "ex: 120 = ate 2 min"
         )
 
-        # Controles ---------------------------------------------------------
-        box_run = ttk.LabelFrame(body, text="6. Execucao")
-        box_run.grid(row=5, column=0, sticky="ew", pady=4)
-        self.btn_start = ttk.Button(box_run, text="Iniciar", command=self.start)
-        self.btn_start.grid(row=0, column=0, padx=4, pady=6)
-        self.btn_pause = ttk.Button(box_run, text="Pausar/Retomar", command=self.toggle_pause, state="disabled")
-        self.btn_pause.grid(row=0, column=1, padx=4)
-        self.btn_stop = ttk.Button(box_run, text="Parar", command=self.stop, state="disabled")
-        self.btn_stop.grid(row=0, column=2, padx=4)
-        ttk.Button(box_run, text="Salvar config", command=self.save_config).grid(row=0, column=3, padx=12)
+        # Salvar / Fechar -------------------------------------------------------
+        actions_bar = ttk.Frame(parent)
+        actions_bar.grid(row=5, column=0, sticky="e", pady=(8, 4))
+        ttk.Button(actions_bar, text="Salvar config", command=self.save_config).pack(side="left", padx=4)
+        ttk.Button(actions_bar, text="Fechar", command=self._hide_config_dialog).pack(side="left", padx=4)
 
-        ttk.Label(box_run, text="Status:").grid(row=1, column=0, sticky="e", padx=4)
-        ttk.Label(box_run, textvariable=self.var_status, font=("Segoe UI", 9, "bold")).grid(
-            row=1, column=1, sticky="w"
-        )
-        ttk.Label(box_run, text="Lances na sessao:").grid(row=1, column=2, sticky="e", padx=4)
-        ttk.Label(box_run, textvariable=self.var_counter, font=("Segoe UI", 9, "bold")).grid(
-            row=1, column=3, sticky="w"
-        )
-
-        # Log ---------------------------------------------------------------
-        self.log_panel = LogPanel(body, title="Log", height=9)
-        self.log_panel.grid(row=6, column=0, sticky="nsew", pady=4)
-
-        body.columnconfigure(0, weight=1)
+        parent.columnconfigure(0, weight=1)
 
     # ------------------------------------------------------------ calibracao
     def pick_rod_slot(self) -> None:
@@ -414,7 +443,7 @@ class FishingWindow(ttk.Frame):
 
     # ------------------------------------------------------------- callbacks
     def log(self, message: str) -> None:
-        self.log_panel.append(message)
+        self.app.log(message, source=self.worker_key)
 
     def on_state(self, state: str) -> None:
         self.var_status.set(state)

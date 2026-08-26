@@ -33,6 +33,17 @@ def check_dependencies() -> list[str]:
 
 
 def main() -> int:
+    from core.elevation import is_admin, relaunch_elevated
+
+    if not is_admin():
+        if relaunch_elevated():
+            return 0
+        print(
+            "AVISO: nao foi possivel obter privilegio de administrador - "
+            "clique/tecla pode nao ter efeito se o cliente do jogo rodar elevado.",
+            file=sys.stderr,
+        )
+
     missing = check_dependencies()
     if missing:
         message = (
