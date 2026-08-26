@@ -11,6 +11,7 @@ from core.elevation import is_admin
 from core.input_simulator import InputSimulator
 from core.license import LicenseManager
 from core.version import APP_VERSION
+from functions.auto_food import AutoFoodWorker
 from gui.license_dialog import ensure_license
 from gui.settings_dialog import SettingsDialog
 from gui.widgets import LogPanel
@@ -33,6 +34,7 @@ TAB_LABELS = {
     "runemaker": "RuneMaker",
     "target": "Target",
     "training": "Training",
+    "auto_food": "AutoFood",
 }
 
 
@@ -72,6 +74,9 @@ class App(tk.Tk):
         self.var_background_enabled = tk.BooleanVar(value=bool(bgcfg.get("enabled", False)))
         self.var_background_window = tk.StringVar(value=bgcfg.get("window_title", ""))
         self.var_background_status = tk.StringVar(value="")
+
+        self.var_auto_food_enabled = tk.BooleanVar(value=False)
+        self.var_auto_food_status = tk.StringVar(value="parado")
 
         self._settings_dialog: SettingsDialog | None = None
 
@@ -114,6 +119,18 @@ class App(tk.Tk):
         notebook.add(self.tabs["runemaker"], text="RuneMaker")
         notebook.add(self.tabs["target"], text="Target")
         notebook.add(self.tabs["training"], text="Training")
+
+        auto_food_bar = ttk.Frame(self, padding=(8, 0, 8, 4))
+        auto_food_bar.pack(fill="x")
+        ttk.Checkbutton(
+            auto_food_bar,
+            text="Auto Food (comer automaticamente em segundo plano)",
+            variable=self.var_auto_food_enabled,
+            command=self._toggle_auto_food,
+        ).pack(side="left")
+        ttk.Label(auto_food_bar, textvariable=self.var_auto_food_status, foreground="#666").pack(
+            side="left", padx=(8, 0)
+        )
 
         self.shared_log = LogPanel(self, title="Log", height=10)
         self.shared_log.pack(fill="x", padx=8, pady=(0, 4))
@@ -286,6 +303,15 @@ class App(tk.Tk):
                 "Isso NAO confirma que o jogo reagiu - confirme visualmente se o clique funcionou.",
             )
 
+    def _toggle_auto_food(self) -> None:
+        if self.var_auto_food_enabled.get():
+            self.start_worker("auto_food", AutoFoodWorker, {})
+            worker = self.workers.get("auto_food")
+            if worker is None or not worker.is_alive():
+                self.var_auto_food_enabled.set(False)
+        else:
+            self.stop_worker("auto_food")
+
     def _save_license(self) -> None:
         self.config_store.save()
 
@@ -408,6 +434,19 @@ class App(tk.Tk):
                         self.toggle_pause_all()
                     elif payload == "stop":
                         self.stop_all()
+                    continue
+
+                if source == "auto_food":
+                    if kind == "log":
+                        self.log(payload, source="auto_food")
+                    elif kind == "state":
+                        self.var_auto_food_status.set(payload)
+                        if payload == "stopped":
+                            self.var_auto_food_enabled.set(False)
+                    elif kind == "counter":
+                        self.var_auto_food_status.set(f"rodando (#{payload})")
+                    elif kind == "popup":
+                        messagebox.showwarning(APP_NAME, payload)
                     continue
 
                 tab = self.tabs.get(source)
