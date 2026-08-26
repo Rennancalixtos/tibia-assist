@@ -1,19 +1,20 @@
 ; installer.nsi - instalador do EasyF (NSIS)
 ;
-; So empacota o .exe ja gerado pelo build.bat/PyInstaller - nao compila
-; nada Python aqui. Cria atalho na Area de Trabalho e no Menu Iniciar,
-; registra um desinstalador (Painel de Controle > Programas).
+; Empacota a pasta onedir ja gerada pelo build.bat/PyInstaller (EasyF.exe +
+; _internal\) - nao compila nada Python aqui. Cria atalho na Area de
+; Trabalho e no Menu Iniciar, registra um desinstalador (Painel de
+; Controle > Programas).
 ;
 ; Compilar localmente (depois de rodar build.bat):
-;   makensis /DEXE_PATH="dist\NOME_DO_EXE.exe" /DEXE_NAME="NOME_DO_EXE.exe" installer.nsi
+;   makensis /DAPP_DIR="dist\EasyF" /DEXE_NAME="EasyF.exe" installer.nsi
 ;
 ; O nome real do .exe vem do EasyF.spec - o workflow de release
 ; (.github/workflows/release.yml) descobre isso automaticamente e passa pro
 ; makensis, sem precisar hardcodar aqui. Os defines abaixo so servem de
 ; fallback pra compilar manualmente sem passar /D.
 
-!ifndef EXE_PATH
-  !define EXE_PATH "dist\EasyF.exe"
+!ifndef APP_DIR
+  !define APP_DIR "dist\EasyF"
 !endif
 !ifndef EXE_NAME
   !define EXE_NAME "EasyF.exe"
@@ -41,7 +42,7 @@ SetCompressor /SOLID lzma
 
 Section "Instalar"
   SetOutPath "$INSTDIR"
-  File /oname=${EXE_NAME} "${EXE_PATH}"
+  File /r "${APP_DIR}\*.*"
 
   CreateShortCut "$DESKTOP\EasyF.lnk" "$INSTDIR\${EXE_NAME}"
 
@@ -59,9 +60,7 @@ Section "Instalar"
 SectionEnd
 
 Section "Uninstall"
-  Delete "$INSTDIR\${EXE_NAME}"
-  Delete "$INSTDIR\Uninstall.exe"
-  RMDir "$INSTDIR"
+  RMDir /r "$INSTDIR"
 
   Delete "$DESKTOP\EasyF.lnk"
   Delete "$SMPROGRAMS\EasyF\EasyF.lnk"
