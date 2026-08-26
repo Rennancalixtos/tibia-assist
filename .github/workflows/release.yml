@@ -49,34 +49,36 @@ jobs:
         shell: cmd
         run: python -m PyInstaller EasyF.spec --noconfirm --clean
 
-      - name: Acha o .exe gerado
+      - name: Acha a pasta e o .exe gerados
         id: find_exe
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path "dist" -Filter "*.exe" | Select-Object -First 1
+          $exe = Get-ChildItem -Path "dist" -Filter "*.exe" -Recurse | Select-Object -First 1
           if (-not $exe) { throw "Nenhum .exe encontrado em dist/ apos o build." }
-          "path=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+          "app_dir=$($exe.Directory.FullName)" >> $env:GITHUB_OUTPUT
           "name=$($exe.Name)" >> $env:GITHUB_OUTPUT
+
+      - name: Empacota o build portatil (zip)
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "${{ steps.find_exe.outputs.app_dir }}\*" -DestinationPath "dist\EasyF-portable.zip"
 
       - name: Instala o NSIS
         shell: pwsh
         run: |
           choco install nsis -y --no-progress
-          # choco atualiza o PATH do sistema, mas o job atual nao ve isso
-          # sozinho - precisa adicionar explicitamente pro GITHUB_PATH pra
-          # os proximos passos (mesmo job) encontrarem o makensis.
           "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
 
       - name: Gera o instalador (atalho na Area de Trabalho, Menu Iniciar, desinstalador)
         shell: pwsh
         run: |
-          makensis /DEXE_PATH="${{ steps.find_exe.outputs.path }}" /DEXE_NAME="${{ steps.find_exe.outputs.name }}" installer.nsi
+          makensis /DAPP_DIR="${{ steps.find_exe.outputs.app_dir }}" /DEXE_NAME="${{ steps.find_exe.outputs.name }}" installer.nsi
           if ($LASTEXITCODE -ne 0) { throw "makensis falhou (codigo $LASTEXITCODE)." }
 
-      - name: Publica a Release com o .exe portatil e o instalador anexados
+      - name: Publica a Release com o build portatil e o instalador anexados
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ${{ steps.find_exe.outputs.path }}
+            dist/EasyF-portable.zip
             dist/EasyF-Setup.exe
           generate_release_notes: true

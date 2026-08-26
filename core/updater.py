@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import urllib.error
 import urllib.request
+import zipfile
 
 REQUEST_TIMEOUT = 10
 DOWNLOAD_TIMEOUT = 180
@@ -40,21 +42,23 @@ def check_for_update(api_base_url: str, current_version: str) -> dict | None:
     return info
 
 
-def _looks_like_valid_exe(path: str, expected_size: int) -> bool:
+def _looks_like_valid_zip(path: str, expected_size: int) -> bool:
     try:
         size = os.path.getsize(path)
     except OSError:
         return False
     if expected_size and size != expected_size:
         return False
-    if size < 2:
+    if size < 4:
         return False
     try:
         with open(path, "rb") as fp:
             header = fp.read(2)
     except OSError:
         return False
-    return header == b"MZ"
+    if header != b"PK":
+        return False
+    return zipfile.is_zipfile(path)
 
 
 def apply_update(api_base_url: str, update_info: dict, on_progress=None) -> bool:
@@ -62,18 +66,20 @@ def apply_update(api_base_url: str, update_info: dict, on_progress=None) -> bool
         return False
 
     asset_id = update_info.get("asset_id")
-    asset_name = update_info.get("asset_name") or "EasyF.exe"
+    asset_name = update_info.get("asset_name") or "EasyF-portable.zip"
     if not asset_id:
         return False
 
     current_exe = sys.executable
+    exe_name = os.path.basename(current_exe)
     exe_dir = os.path.dirname(current_exe)
-    new_exe = os.path.join(exe_dir, f"_update_{asset_name}")
+    zip_path = os.path.join(exe_dir, f"_update_{asset_name}")
+    staging_dir = os.path.join(exe_dir, "_update_staging")
 
     api_base_url = api_base_url.rstrip("/")
     try:
         req = urllib.request.Request(f"{api_base_url}/api/update/download?asset_id={asset_id}")
-        with urllib.request.urlopen(req, timeout=DOWNLOAD_TIMEOUT) as resp, open(new_exe, "wb") as fp:
+        with urllib.request.urlopen(req, timeout=DOWNLOAD_TIMEOUT) as resp, open(zip_path, "wb") as fp:
             total = int(resp.headers.get("Content-Length") or 0)
             downloaded = 0
             while True:
@@ -86,16 +92,33 @@ def apply_update(api_base_url: str, update_info: dict, on_progress=None) -> bool
                     on_progress(downloaded, total)
     except (urllib.error.URLError, TimeoutError, OSError, ValueError):
         try:
-            os.remove(new_exe)
+            os.remove(zip_path)
         except OSError:
             pass
         return False
 
-    if not _looks_like_valid_exe(new_exe, expected_size=total):
+    if not _looks_like_valid_zip(zip_path, expected_size=total):
         try:
-            os.remove(new_exe)
+            os.remove(zip_path)
         except OSError:
             pass
+        return False
+
+    shutil.rmtree(staging_dir, ignore_errors=True)
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extractall(staging_dir)
+    except (zipfile.BadZipFile, OSError):
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        return False
+    finally:
+        try:
+            os.remove(zip_path)
+        except OSError:
+            pass
+
+    if not os.path.exists(os.path.join(staging_dir, exe_name)):
+        shutil.rmtree(staging_dir, ignore_errors=True)
         return False
 
     script_path = os.path.join(tempfile.gettempdir(), "tibia_assist_update.bat")
@@ -103,8 +126,8 @@ def apply_update(api_base_url: str, update_info: dict, on_progress=None) -> bool
         fp.write(
             "@echo off\r\n"
             "timeout /t 2 /nobreak >nul\r\n"
-            f'del /f /q "{current_exe}"\r\n'
-            f'move /y "{new_exe}" "{current_exe}"\r\n'
+            f'robocopy "{staging_dir}" "{exe_dir}" /E /IS /IT /R:3 /W:1 /NFL /NDL /NJH /NJS >nul\r\n'
+            f'rmdir /s /q "{staging_dir}"\r\n'
             f'start "" "{current_exe}"\r\n'
             'del "%~f0"\r\n'
         )

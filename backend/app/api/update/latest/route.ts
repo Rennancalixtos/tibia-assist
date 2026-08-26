@@ -45,19 +45,23 @@ export async function GET() {
 
   const release = await res.json();
   const assets: Array<{ id: number; name: string; size: number }> = release.assets || [];
-  // O auto-update silencioso precisa do .exe PORTATIL (troca em runtime,
+  // O auto-update silencioso precisa do build PORTATIL (troca em runtime,
   // sem wizard) - nunca do instalador NSIS (*-Setup.exe), que abre uma
-  // janela e pede clique.
+  // janela e pede clique. Desde a migracao pra --onedir o portatil e um
+  // .zip (pasta inteira do app); mantemos o fallback pro .exe solto por
+  // causa de releases antigas (onefile) que ainda podem ficar "latest".
+  const zipAsset = assets.find((a) => a.name?.toLowerCase().endsWith(".zip"));
   const exeAsset = assets.find((a) => {
     const name = a.name?.toLowerCase() || "";
     return name.endsWith(".exe") && !name.includes("setup") && !name.includes("install");
   });
+  const portableAsset = zipAsset ?? exeAsset;
 
   return NextResponse.json({
     version: release.tag_name || null,
     notes: release.body || "",
-    asset_id: exeAsset?.id ?? null,
-    asset_name: exeAsset?.name ?? null,
-    size: exeAsset?.size ?? null,
+    asset_id: portableAsset?.id ?? null,
+    asset_name: portableAsset?.name ?? null,
+    size: portableAsset?.size ?? null,
   });
 }
