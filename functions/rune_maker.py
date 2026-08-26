@@ -1,25 +1,3 @@
-"""RuneMaker - cria runas em sequencia (ou treina mana) usando a magia.
-
-Tres modos, todos configurados na aba RuneMaker (`mode`/`no_hand_mode`):
-
-- "craft" com mao (padrao): pega a blank rune da backpack de origem, leva
-  pra mao do personagem, conjura a magia, guarda o resultado na backpack de
-  destino. Slots vazios/ocupados sao detectados por template matching (nao
-  por heuristica de cor), calibrados pelo usuario na propria tela.
-- "craft" com `no_hand_mode` (alguns OTservers aplicam a magia direto no
-  slot, sem precisar de mao): so clica no slot da blank rune e conjura,
-  sem nenhum arraste.
-- "mana_training": so conjura a magia repetidamente respeitando a mana
-  minima, sem manusear nenhum item.
-
-Em todos os modos, a mana e checada por OCR (Tesseract) antes de agir, e a
-automacao pausa (nao so loga) quando faltar recurso (mana ou blank rune) ou
-quando a backpack de destino estiver cheia - martelar contra um erro de
-calibracao e pior do que parar e avisar.
-
-Tudo baseado em pixels da tela + input simulado. Nenhuma leitura de memoria.
-"""
-
 from __future__ import annotations
 
 import re
@@ -34,7 +12,7 @@ from core.worker import BaseWorker
 
 try:
     import pytesseract
-except ImportError:  # pragma: no cover
+except ImportError:
     pytesseract = None
 
 
@@ -46,18 +24,6 @@ class OCRUnavailable(RuntimeError):
 
 
 def configure_tesseract(explicit_cmd: str | None = None, on_progress=None) -> None:
-    """Aponta o pytesseract pro binario do Tesseract.
-
-    Usa `explicit_cmd` se informado; senao tenta achar automaticamente (PATH
-    ou pasta padrao de instalacao). Se nao achar de nenhum jeito, instala
-    sozinho (instalador ja embutido no pacote - sem precisar de internet
-    nesse momento, ver core/tesseract_installer.py) e tenta achar de novo -
-    o usuario nunca precisa instalar o Tesseract manualmente.
-
-    `on_progress`, se informado, recebe uma linha de status (mesma cara de
-    `BaseWorker.log`) - so relevante quando uma instalacao de verdade
-    acontece (a maioria das vezes o Tesseract ja esta la e isso e um no-op).
-    """
     if pytesseract is None:
         return
 
@@ -76,26 +42,16 @@ def configure_tesseract(explicit_cmd: str | None = None, on_progress=None) -> No
 
 
 def preprocess_for_ocr(frame: np.ndarray) -> np.ndarray:
-    """Deixa o recorte mais legivel para o Tesseract.
-
-    A fonte do cliente e pequena e clara sobre fundo escuro; ampliar e
-    binarizar melhora bastante o reconhecimento.
-    """
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     gray = cv2.resize(gray, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)
     gray = cv2.medianBlur(gray, 3)
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    # Texto claro em fundo escuro -> inverte para texto preto em fundo branco.
     if np.mean(binary) < 127:
         binary = cv2.bitwise_not(binary)
     return binary
 
 
 def read_number(frame: np.ndarray) -> int | None:
-    """Le o primeiro numero inteiro visivel no recorte. None se falhar.
-
-    Aceita formatos como "123" e "123 / 456" (nesse caso devolve 123).
-    """
     if pytesseract is None:
         raise OCRUnavailable(
             "pytesseract nao instalado. Instale-o e o Tesseract OCR, "
@@ -104,7 +60,7 @@ def read_number(frame: np.ndarray) -> int | None:
     processed = preprocess_for_ocr(frame)
     try:
         text = pytesseract.image_to_string(processed, config=OCR_CONFIG)
-    except Exception as exc:  # binario do Tesseract ausente
+    except Exception as exc:
         raise OCRUnavailable(f"Falha ao executar o Tesseract: {exc}") from exc
 
     match = re.search(r"\d+", text.replace(" ", ""))
@@ -112,13 +68,6 @@ def read_number(frame: np.ndarray) -> int | None:
 
 
 def slot_is_empty(frame_region: np.ndarray, empty_template: np.ndarray, threshold: float = 0.90) -> bool:
-    """Compara a regiao atual de um slot com o template de "vazio" calibrado.
-
-    Decisivo e o template match (nao heuristica de cor/desvio-padrao): o
-    fundo de um slot vazio e visualmente consistente, mas o conteudo de um
-    slot ocupado varia muito (icones, contadores) - um threshold de cor
-    simples gera falso positivo/negativo com frequencia.
-    """
     if frame_region.shape[:2] != empty_template.shape[:2]:
         empty_template = cv2.resize(empty_template, (frame_region.shape[1], frame_region.shape[0]))
     result = cv2.matchTemplate(frame_region, empty_template, cv2.TM_CCOEFF_NORMED)
@@ -169,7 +118,6 @@ class RuneMakerWorker(BaseWorker):
 
         configure_tesseract(on_progress=self.log)
 
-        # Evita repetir a mesma mensagem de "sem recurso" a cada iteracao.
         self._last_warning = ""
 
         mode_label = {"craft": "criar runas", "mana_training": "ManaTraining"}.get(self.mode, self.mode)
@@ -186,14 +134,12 @@ class RuneMakerWorker(BaseWorker):
         label = "Magias conjuradas" if self.mode == "mana_training" else "Runas criadas"
         self.log(f"RuneMaker finalizado. {label} na sessao: {self.counter}.")
 
-    # -------------------------------------------------------------------- OCR
     def read_status(self, key: str) -> int | None:
         region = self.config.get(f"{key}_region")
         frame = self.capture.grab(region)
         return read_number(frame)
 
     def resources_ok(self) -> bool:
-        """True se a mana esta acima do minimo configurado."""
         if self.check_mana:
             mana = self.read_status("mana")
             self.emit("mana_reading", mana)
@@ -212,7 +158,6 @@ class RuneMakerWorker(BaseWorker):
             self.log(message)
             self._last_warning = message
 
-    # ------------------------------------------------------------- item slots
     def _load_slot_template(self, slot_key: str) -> np.ndarray | None:
         path = self.config.get(f"{slot_key}_empty_template")
         if not path:
@@ -223,8 +168,6 @@ class RuneMakerWorker(BaseWorker):
             return None
 
     def _slot_currently_empty(self, region_key: str, template: np.ndarray | None) -> bool | None:
-        """Devolve True/False, ou None se o template nao foi calibrado (a
-        checagem fica desativada pra aquele slot em vez de travar o ciclo)."""
         if template is None:
             return None
         region = self.config.get(region_key)
@@ -235,7 +178,7 @@ class RuneMakerWorker(BaseWorker):
 
     @staticmethod
     def _confirm(actual: bool | None, expected: bool) -> bool:
-        if actual is None:  # sem template calibrado pra esse slot: nao bloqueia
+        if actual is None:
             return True
         return actual == expected
 
@@ -245,7 +188,6 @@ class RuneMakerWorker(BaseWorker):
     def _post_drag_delay(self) -> bool:
         return self.sleep(InputSimulator.random_delay(0.10, 0.25))
 
-    # -------------------------------------------------------- pausa mutua
     def _request_action_floor(self) -> bool:
         if self.request_floor(timeout=5.0):
             self._pause_failures = 0
@@ -260,7 +202,6 @@ class RuneMakerWorker(BaseWorker):
             self.log("AVISO: outra rotina nao confirmou a pausa a tempo - tentando de novo no proximo ciclo.")
         return False
 
-    # ------------------------------------------------------------------ ciclo
     def loop(self) -> None:
         if self.mode == "mana_training":
             self._mana_training_loop()
@@ -358,7 +299,6 @@ class RuneMakerWorker(BaseWorker):
                 return
 
     def _simple_craft_cycle(self, dry_run: bool = False) -> bool:
-        """Modo `no_hand_mode`: clica direto no slot da blank rune, sem arrastar."""
         blank_x, blank_y = int(self.slot[0]), int(self.slot[1])
         jitter = int(self.config.get("click_jitter", 2))
 
@@ -374,12 +314,10 @@ class RuneMakerWorker(BaseWorker):
         return True
 
     def _craft_cycle(self, dry_run: bool = False) -> bool:
-        """Modo completo: pega a blank rune, leva pra mao, conjura, guarda."""
         blank_x, blank_y = int(self.slot[0]), int(self.slot[1])
         hand_x, hand_y = int(self.hand_slot[0]), int(self.hand_slot[1])
         output_x, output_y = int(self.output_slot[0]), int(self.output_slot[1])
 
-        # 1. Sobrou item de um ciclo anterior na mao? guarda antes de continuar.
         hand_empty = self._slot_currently_empty("hand_slot_region", self.hand_empty_template)
         if hand_empty is False:
             output_empty = self._slot_currently_empty("output_slot_region", self.output_empty_template)
@@ -399,7 +337,6 @@ class RuneMakerWorker(BaseWorker):
                     self.log("Aviso: mao nao ficou vazia ao guardar item anterior - tentando de novo.")
                     return False
 
-        # 2. Blank rune -> mao
         if dry_run:
             self.log(f"[dry-run] arrastaria blank rune ({blank_x},{blank_y}) -> mao ({hand_x},{hand_y})")
         else:
@@ -410,7 +347,6 @@ class RuneMakerWorker(BaseWorker):
                 self.log("Aviso: mao nao ficou ocupada ao pegar a blank rune - tentando de novo.")
                 return False
 
-        # 3. Conjura a magia com a rune na mao
         if dry_run:
             self.log(f"[dry-run] pressionaria a tecla da magia ({self.spell_hotkey})")
         else:
@@ -420,7 +356,6 @@ class RuneMakerWorker(BaseWorker):
             ):
                 return False
 
-        # 4. Guarda o resultado na backpack de destino
         output_empty = self._slot_currently_empty("output_slot_region", self.output_empty_template)
         if output_empty is False:
             self.log("Backpack de destino cheia - RuneMaker pausado.")

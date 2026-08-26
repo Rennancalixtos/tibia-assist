@@ -1,16 +1,3 @@
-"""Cliente de autenticacao/licenca - login por email+senha contra o backend.
-
-Sem uma sessao com assinatura ativa, nenhuma rotina (AutoFishing/RuneMaker)
-roda - ver `App.start_worker` em gui/app.py. A sessao (access/refresh token)
-fica persistida na secao "license" do config.json (mesmo mecanismo usado
-pelas outras abas), criptografada em repouso com o DPAPI do Windows
-(amarrada ao usuario logado - copiar o config.json pra outra conta/maquina
-nao serve pra nada). Uma janela de tolerancia offline evita bloquear o
-usuario por uma falha de rede passageira, mas a expiracao real da
-assinatura e sempre decidida pelo backend; o cache local e assinado (HMAC)
-para detectar edicao manual do arquivo.
-"""
-
 from __future__ import annotations
 
 import base64
@@ -23,8 +10,8 @@ import urllib.request
 from datetime import datetime, timezone
 
 try:
-    import win32crypt  # DPAPI - so no Windows
-except ImportError:  # pragma: no cover - fora do Windows
+    import win32crypt
+except ImportError:
     win32crypt = None
 
 REQUEST_TIMEOUT = 25
@@ -33,9 +20,6 @@ _DPAPI_PREFIX = "dpapi:"
 
 
 def _protect(plaintext: str) -> str:
-    """Criptografa `plaintext` com o DPAPI do Windows (amarrado ao usuario
-    logado): o config.json com o token nao serve pra nada copiado pra outra
-    conta/maquina. Sem pywin32 (fora do Windows), guarda em texto puro."""
     if not plaintext:
         return ""
     if win32crypt is None:
@@ -47,13 +31,10 @@ def _protect(plaintext: str) -> str:
 
 
 def _unprotect(value: str) -> str:
-    """Reverte `_protect`. Devolve "" se nao puder decifrar (blob de outro
-    usuario/maquina, corrompido, ou pywin32 ausente) - forca novo login em
-    vez de travar com um valor invalido."""
     if not value:
         return ""
     if not value.startswith(_DPAPI_PREFIX):
-        return value  # token antigo, salvo antes desta protecao existir
+        return value
     if win32crypt is None:
         return ""
     try:
@@ -63,11 +44,6 @@ def _unprotect(value: str) -> str:
     except Exception:
         return ""
 
-# Segredo fixo embutido no app para assinar o cache local (status/expires_at/
-# checked_at) e detectar edicao manual do config.json. NAO e um segredo real
-# (esta no binario/fonte, um engenheiro reverso pode extrai-lo) - o objetivo e
-# so impedir que editar o JSON num editor de texto burle o periodo de
-# tolerancia offline, nao resistir a um ataque dedicado ao binario.
 _CACHE_SECRET = b"tibia-assist-offline-cache-v1-8f2c1e9a4b6d0731"
 
 
@@ -88,8 +64,6 @@ def _sign_cache(refresh_token: str, status: str, expires_at: str | None, checked
 
 
 def _decode_jwt_claims(token: str) -> dict:
-    """Decodifica o payload de um JWT sem verificar assinatura - usado so
-    para exibir informacao (email) que ja veio autenticada pelo backend."""
     try:
         parts = token.split(".")
         if len(parts) != 3:
@@ -101,12 +75,6 @@ def _decode_jwt_claims(token: str) -> dict:
 
 
 class LicenseManager:
-    """Guarda a sessao ativa e fala com o backend (Vercel) para valida-la.
-
-    `section` e o dict de `Config.section("license")` - mutado in-place e
-    persistido pelo chamador (o mesmo padrao das abas de configuracao).
-    """
-
     def __init__(self, section: dict):
         self.section = section
         self.valid = False
@@ -129,12 +97,10 @@ class LicenseManager:
         return bool(self.section.get("refresh_token"))
 
     def _plain(self, key: str) -> str:
-        """Le `key` (access_token/refresh_token) decifrado com o DPAPI."""
         return _unprotect(self.section.get(key, ""))
 
     @property
     def email(self) -> str:
-        """Email do usuario logado, extraido do access_token (JWT)."""
         token = self._plain("access_token")
         if not token:
             return ""
@@ -142,7 +108,6 @@ class LicenseManager:
 
     @property
     def expires_label(self) -> str:
-        """Tempo restante da assinatura, formatado pra exibicao na GUI."""
         expires = _parse_iso(self.section.get("expires_at"))
         if expires is None:
             return "-"
@@ -159,7 +124,6 @@ class LicenseManager:
             return f"{hours}h {minutes}min"
         return f"{minutes}min"
 
-    # --------------------------------------------------------------- estado
     def _current_cache_sig(self) -> str:
         return _sign_cache(
             self.section.get("refresh_token", ""),
@@ -169,12 +133,6 @@ class LicenseManager:
         )
 
     def _apply_cached_state(self) -> None:
-        """Sem internet, aceita o ultimo estado 'active' por algumas horas.
-
-        So confia nesses campos se a assinatura HMAC local ainda bater - do
-        contrario, o config.json foi editado manualmente (ou corrompido) e a
-        tolerancia offline nao se aplica, forcando uma revalidacao online.
-        """
         if not self.logged_in:
             self.valid = False
             self.message = "Faca login para ativar o programa."
@@ -211,10 +169,6 @@ class LicenseManager:
         self.section["access_token"] = _protect(body.get("access_token", ""))
         self.section["refresh_token"] = _protect(body.get("refresh_token", ""))
         self.section["access_token_expires_at"] = body.get("expires_at")
-        # `session_token` so vem em login (nunca em refresh, de proposito -
-        # ver /api/auth/refresh) - quando ausente, preserva o valor atual em
-        # vez de apagar, senao o proprio refresh periodico invalidaria a
-        # fiscalizacao de sessao unica desta mesma instancia.
         if "session_token" in body:
             self.section["session_token"] = body.get("session_token") or ""
         license_info = body.get("license") or {}
@@ -235,10 +189,7 @@ class LicenseManager:
         self.section["cache_sig"] = ""
         self.valid = False
 
-    # ------------------------------------------------------------- rede
     def _post(self, path: str, payload: dict) -> tuple[int, dict | None]:
-        """POST JSON no backend. Devolve (status_code, body) - body None se
-        a requisicao falhou por rede (sem servidor pra responder)."""
         if not self.api_base_url:
             return 0, None
         data = json.dumps(payload).encode("utf-8")
@@ -288,7 +239,6 @@ class LicenseManager:
         return self.valid
 
     def refresh(self) -> bool:
-        """Renova a sessao e revalida a assinatura; sem rede, cai no cache."""
         refresh_token = self._plain("refresh_token")
         if not refresh_token:
             self.valid = False
@@ -301,7 +251,6 @@ class LicenseManager:
 
         status, body = self._post("/api/auth/refresh", {"refresh_token": refresh_token})
         if body is None:
-            # Sem rede: mantem a sessao local e usa a tolerancia offline.
             self._apply_cached_state()
             if not self.valid:
                 self.message = (
@@ -310,7 +259,6 @@ class LicenseManager:
                 )
             return self.valid
         if status == 401:
-            # Sessao realmente invalidada pelo servidor - precisa logar de novo.
             self._clear_session()
             self.message = str(body.get("error") or "Sessao expirada. Faca login novamente.")
             return False
@@ -322,7 +270,6 @@ class LicenseManager:
         return self.valid
 
     def start_checkout(self) -> str | None:
-        """Pede ao backend uma URL de checkout do Stripe pra assinatura atual."""
         access_token = self._plain("access_token")
         if not access_token:
             self.message = "Faca login antes de assinar."
@@ -339,29 +286,11 @@ class LicenseManager:
     def logout(self) -> None:
         access_token = self._plain("access_token")
         if access_token:
-            # Best-effort: libera a conta pra login em outro lugar
-            # imediatamente, sem esperar o token antigo expirar sozinho no
-            # proximo heartbeat de quem tentar logar. Falha aqui (sem rede,
-            # backend fora do ar) nao impede o logout local.
             self._post("/api/auth/logout", {"access_token": access_token})
         self._clear_session()
         self.message = "Faca login para ativar o programa."
 
     def heartbeat(self) -> str:
-        """Confirma com o servidor que esta e ainda a sessao ativa da conta.
-
-        Devolve:
-        - "ok": sessao confirmada (ou conta ainda sem fiscalizacao de sessao
-          unica - sem session_token local, nao ha nada pra checar).
-        - "replaced": outro login assumiu a conta - quem chamar deve forcar
-          logout com o aviso "acessada em outro local".
-        - "auth_error": access_token expirado/invalido e uma tentativa de
-          `refresh()` tambem nao resolveu - sessao morta por outro motivo
-          que nao "sessao substituida" (ex: dessincronizado apos hibernar).
-        - "network_error": sem resposta do servidor - NAO e evidencia de
-          nada, so significa "tentar de novo depois" (mesmo espirito da
-          tolerancia offline ja existente pra validade da assinatura).
-        """
         session_token = str(self.section.get("session_token") or "")
         if not session_token:
             return "ok"
@@ -374,10 +303,6 @@ class LicenseManager:
         if outcome != "auth_error":
             return outcome
 
-        # Access token pode estar so desatualizado (ex: maquina hibernou
-        # alem do ciclo normal de refresh) - tenta renovar antes de concluir
-        # que a sessao morreu, pra nao confundir isso com "acessada em outro
-        # local" (mensagens erradas geram ticket de suporte por engano).
         if not self.refresh():
             return "auth_error"
         access_token = self._plain("access_token")

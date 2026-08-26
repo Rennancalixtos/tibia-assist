@@ -1,10 +1,3 @@
-"""Base comum para as rotinas em background (AutoFishing e RuneMaker).
-
-Cada rotina roda em uma thread separada e nunca toca em widgets do tkinter
-diretamente: toda comunicacao com a GUI passa por uma `queue.Queue`, drenada
-pela janela principal no loop do tkinter.
-"""
-
 from __future__ import annotations
 
 import queue
@@ -14,8 +7,6 @@ from datetime import datetime
 
 
 class BaseWorker(threading.Thread):
-    """Thread com suporte a pausa, parada e envio de eventos para a GUI."""
-
     name_label = "worker"
 
     def __init__(self, config: dict, events: "queue.Queue[tuple]"):
@@ -24,15 +15,14 @@ class BaseWorker(threading.Thread):
         self.events = events
         self._stop_event = threading.Event()
         self._resume_event = threading.Event()
-        self._resume_event.set()  # comeca despausado
+        self._resume_event.set()
         self.counter = 0
         self.coordinator = None
         self._coordinator_name: str | None = None
 
-    # ------------------------------------------------------------- controles
     def stop(self) -> None:
         self._stop_event.set()
-        self._resume_event.set()  # libera quem estiver esperando para poder sair
+        self._resume_event.set()
 
     def pause(self) -> None:
         self._resume_event.clear()
@@ -58,7 +48,6 @@ class BaseWorker(threading.Thread):
     def stopped(self) -> bool:
         return self._stop_event.is_set()
 
-    # ---------------------------------------------------------------- eventos
     def emit(self, kind: str, payload=None) -> None:
         self.events.put((self.name_label, kind, payload))
 
@@ -67,29 +56,16 @@ class BaseWorker(threading.Thread):
         self.emit("log", f"[{stamp}] {message}")
 
     def emit_config_update(self, updates: dict) -> None:
-        """Pede pra GUI mesclar `updates` na config persistida (ex:
-        recalibracao automatica). O worker so tem uma COPIA da config (dict
-        raso passado no construtor) - nao pode salvar direto no config.json,
-        so quem tem a referencia real (a aba na thread da GUI) pode."""
         self.emit("config_update", updates)
 
     def warn_popup(self, message: str) -> None:
-        """Mostra um popup de alerta - so o log pode passar despercebido se
-        a aba nao estiver visivel. Nunca chama tkinter direto (worker roda
-        numa thread separada); so emite o evento pra fila, a janela
-        principal (thread da GUI) e quem mostra o messagebox de verdade."""
         self.emit("popup", message)
 
     def bump_counter(self, amount: int = 1) -> None:
         self.counter += amount
         self.emit("counter", self.counter)
 
-    # ------------------------------------------------------------------ util
     def sleep(self, seconds: float) -> bool:
-        """Dorme em fatias curtas para responder rapido a pause/stop.
-
-        Devolve False se a rotina foi parada durante a espera.
-        """
         deadline = time.monotonic() + max(0.0, float(seconds))
         while time.monotonic() < deadline:
             if self.stopped:
@@ -98,18 +74,12 @@ class BaseWorker(threading.Thread):
         return not self.stopped
 
     def wait_while_paused(self) -> bool:
-        """Bloqueia enquanto pausado. Devolve False se foi parado."""
         while not self._resume_event.wait(timeout=0.1):
             if self.stopped:
                 return False
         return not self.stopped
 
-    # ------------------------------------------------------- coordenador (N vias)
     def register_with_coordinator(self, name: str) -> None:
-        """Registra esta rotina como ativa no `AutomationCoordinator`
-        (ver core/coordinator.py) sob `name` - usado tanto para saber quem
-        pausar quando outra rotina pede a vez, quanto para saber a quem
-        pedir a vez antes de agir."""
         self.coordinator = self.config.get("_coordinator")
         self._coordinator_name = name
         if self.coordinator:
@@ -120,11 +90,6 @@ class BaseWorker(threading.Thread):
             self.coordinator.stopped(self._coordinator_name)
 
     def wait_for_higher_priority(self) -> bool:
-        """Bloqueia enquanto pausado manualmente OU enquanto uma rotina de
-        prioridade maior estiver com a vez (coordinator.should_pause) - as
-        duas condicoes num so loop de espera, nunca uma depois da outra (um
-        pause manual nao pode travar aqui sem nunca confirmar a pausa
-        externa). Devolve False se foi parado."""
         name = self._coordinator_name
         externally_paused_logged = False
         while not self.stopped and (
@@ -142,8 +107,6 @@ class BaseWorker(threading.Thread):
         return not self.stopped
 
     def request_floor(self, timeout: float = 5.0) -> bool:
-        """Pede a vez a toda rotina ativa de prioridade menor antes de agir.
-        Devolve True se liberado (ou se nao havia ninguem para pausar)."""
         if not self.coordinator or not self._coordinator_name:
             return True
         return self.coordinator.request_floor(self._coordinator_name, timeout=timeout)
@@ -152,19 +115,17 @@ class BaseWorker(threading.Thread):
         if self.coordinator and self._coordinator_name:
             self.coordinator.release_floor(self._coordinator_name)
 
-    # ------------------------------------------------------------------ ciclo
-    def run(self) -> None:  # pragma: no cover - integracao
+    def run(self) -> None:
         self.emit("state", "running")
         try:
             self.setup()
             self.loop()
-        except Exception as exc:  # erro inesperado nao pode matar a GUI
+        except Exception as exc:
             self.log(f"ERRO: {exc}")
         finally:
             self.teardown()
             self.emit("state", "stopped")
 
-    # Ganchos sobrescritos pelas subclasses ---------------------------------
     def setup(self) -> None:
         pass
 

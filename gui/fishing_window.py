@@ -1,5 +1,3 @@
-"""Aba AutoFishing: configuracao, calibracao e controle da rotina de pesca."""
-
 from __future__ import annotations
 
 import os
@@ -21,8 +19,6 @@ from functions.auto_fishing import (
 )
 from gui.widgets import ScrollableFrame, add_field, parse_float, parse_int, region_text
 
-# O worker/InputSimulator so reconhecem os valores internos "right"/"left" -
-# esse mapeamento so existe para exibir rotulos em portugues na interface.
 BUTTON_LABELS = {"right": "direito", "left": "esquerdo"}
 BUTTON_VALUES = {label: value for value, label in BUTTON_LABELS.items()}
 
@@ -35,7 +31,6 @@ class FishingWindow(ttk.Frame):
         self.app = app
         self.cfg = app.config_store.section("fishing")
 
-        # --------------------------------------------------- variaveis da GUI
         self.var_mode = tk.StringVar(value=self.cfg.get("detection_mode", "hsv"))
         self.var_hsv_lower = tk.StringVar(value=", ".join(map(str, self.cfg.get("hsv_lower"))))
         self.var_hsv_upper = tk.StringVar(value=", ".join(map(str, self.cfg.get("hsv_upper"))))
@@ -77,9 +72,6 @@ class FishingWindow(ttk.Frame):
 
         self._build()
 
-        # Dialogo de configuracao (secoes 1 a 5) - construido ja aqui (nao so
-        # no primeiro clique em "Configurar...") pra ficar sempre escondido
-        # ate ser aberto, em vez de recriado toda vez (ver `open_config_dialog`).
         self._config_dialog = tk.Toplevel(self)
         self._config_dialog.title("Configurar - AutoFishing")
         self._config_dialog.geometry("640x600")
@@ -90,11 +82,9 @@ class FishingWindow(ttk.Frame):
         self._build_config_dialog(config_scroll.body)
         self._config_dialog.withdraw()
 
-    # ---------------------------------------------------------------- layout
     def _build(self) -> None:
         body = self.body
 
-        # Execucao ------------------------------------------------------------
         box_run = ttk.LabelFrame(body, text="1. Execucao")
         box_run.grid(row=0, column=0, sticky="ew", pady=4)
         self.btn_start = ttk.Button(box_run, text="Iniciar", command=self.start)
@@ -125,9 +115,7 @@ class FishingWindow(ttk.Frame):
     def _hide_config_dialog(self) -> None:
         self._config_dialog.withdraw()
 
-    # ------------------------------------------------------- dialogo de config
     def _build_config_dialog(self, parent) -> None:
-        # Vara de pescar ------------------------------------------------------
         box_rod = ttk.LabelFrame(parent, text="1. Vara de pescar")
         box_rod.grid(row=0, column=0, sticky="ew", pady=4)
         box_rod.columnconfigure(1, weight=1)
@@ -136,7 +124,6 @@ class FishingWindow(ttk.Frame):
         )
         ttk.Label(box_rod, textvariable=self.var_rod_slot).grid(row=0, column=1, sticky="w")
 
-        # Regiao monitorada -------------------------------------------------
         box_region = ttk.LabelFrame(parent, text="2. Regiao monitorada (lago)")
         box_region.grid(row=1, column=0, sticky="ew", pady=4)
         box_region.columnconfigure(1, weight=1)
@@ -145,7 +132,6 @@ class FishingWindow(ttk.Frame):
         )
         ttk.Label(box_region, textvariable=self.var_region).grid(row=0, column=1, sticky="w")
 
-        # Deteccao ----------------------------------------------------------
         box_detect = ttk.LabelFrame(parent, text="3. Deteccao de agua")
         box_detect.grid(row=2, column=0, sticky="ew", pady=4)
 
@@ -196,7 +182,6 @@ class FishingWindow(ttk.Frame):
             side="left", padx=4
         )
 
-        # Clique e ritmo ----------------------------------------------------
         box_click = ttk.LabelFrame(parent, text="4. Clique e ritmo")
         box_click.grid(row=3, column=0, sticky="ew", pady=4)
 
@@ -224,7 +209,6 @@ class FishingWindow(ttk.Frame):
             variable=self.var_randomize,
         ).grid(row=5, column=0, columnspan=3, sticky="w", padx=4, pady=3)
 
-        # Pausas periodicas ---------------------------------------------------
         box_break = ttk.LabelFrame(parent, text="5. Pausas periodicas (descanso)")
         box_break.grid(row=4, column=0, sticky="ew", pady=4)
         ttk.Checkbutton(
@@ -243,7 +227,6 @@ class FishingWindow(ttk.Frame):
             box_break, 4, "Pausa maxima (s)", self.var_break_duration_max, 8, "ex: 120 = ate 2 min"
         )
 
-        # Salvar / Fechar -------------------------------------------------------
         actions_bar = ttk.Frame(parent)
         actions_bar.grid(row=5, column=0, sticky="e", pady=(8, 4))
         ttk.Button(actions_bar, text="Salvar config", command=self.save_config).pack(side="left", padx=4)
@@ -251,7 +234,6 @@ class FishingWindow(ttk.Frame):
 
         parent.columnconfigure(0, weight=1)
 
-    # ------------------------------------------------------------ calibracao
     def pick_rod_slot(self) -> None:
         point = self.app.select_point("Clique na posicao da VARA DE PESCAR  -  ESC cancela")
         if point:
@@ -269,7 +251,6 @@ class FishingWindow(ttk.Frame):
             self.log(f"Regiao de pesca definida: {region_text(region)}")
 
     def calibrate_color(self) -> None:
-        """Usuario recorta um pedaco de agua; derivamos a faixa HSV dele."""
         region = self.app.select_region("Selecione um pedaco de AGUA  -  ESC cancela")
         if not region:
             return
@@ -284,7 +265,6 @@ class FishingWindow(ttk.Frame):
         self.log(f"Cor calibrada: HSV {lower} - {upper} (brilho de referencia: {reference_brightness:.0f})")
 
     def capture_template(self) -> None:
-        """Usuario recorta uma tile de agua; salvamos como template PNG."""
         region = self.app.select_region("Selecione UMA tile de agua  -  ESC cancela")
         if not region:
             return
@@ -298,12 +278,6 @@ class FishingWindow(ttk.Frame):
         self.log(f"Template salvo em {path} ({region[2]}x{region[3]} px)")
 
     def _run_detection(self) -> tuple:
-        """Captura a regiao e roda a deteccao configurada, sem depender do
-        resto do worker (posicao da vara, etc.) - o teste e so sobre a agua.
-
-        Devolve (frame, targets). Lanca ValueError se a regiao/template nao
-        estiverem prontos.
-        """
         cfg = self.worker_config()
         if not is_valid_region(cfg.get("region")):
             raise ValueError("Selecione a regiao monitorada primeiro.")
@@ -343,7 +317,6 @@ class FishingWindow(ttk.Frame):
         return frame, targets
 
     def test_detection(self) -> None:
-        """Roda a deteccao uma unica vez e informa quantas tiles foram achadas."""
         self.save_config()
         try:
             _frame, targets = self._run_detection()
@@ -359,7 +332,6 @@ class FishingWindow(ttk.Frame):
         messagebox.showinfo("AutoFishing", message)
 
     def preview_grid(self) -> None:
-        """Mostra o grid de SQM sobre a regiao, com os tiles validos marcados."""
         self.save_config()
         try:
             frame, targets = self._run_detection()
@@ -374,7 +346,6 @@ class FishingWindow(ttk.Frame):
         cv2.waitKey(0)
         cv2.destroyWindow("AutoFishing - grid de SQM (ESC ou fechar a janela)")
 
-    # -------------------------------------------------------------- controles
     def worker_config(self) -> dict:
         cfg = dict(self.cfg)
         cfg["template_path"] = os.path.join(
@@ -415,8 +386,6 @@ class FishingWindow(ttk.Frame):
         self.app.config_store.save()
 
     def apply_config_update(self, updates: dict) -> None:
-        """Recebe ajustes feitos pelo worker em execucao (recalibracao
-        automatica por EMA) e mantem os campos da GUI sincronizados."""
         self.cfg.update(updates)
         self.app.config_store.save()
         if "hsv_lower" in updates:
@@ -441,7 +410,6 @@ class FishingWindow(ttk.Frame):
     def stop(self) -> None:
         self.app.stop_worker(self.worker_key)
 
-    # ------------------------------------------------------------- callbacks
     def log(self, message: str) -> None:
         self.app.log(message, source=self.worker_key)
 

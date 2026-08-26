@@ -1,23 +1,3 @@
-"""Clique/tecla via PostMessage direto na janela do jogo (modo background).
-
-Diferente do InputSimulator padrao (que move o cursor real do Windows via
-SendInput), essas funcoes mandam mensagens diretamente pra fila da janela
-alvo (`win32gui.PostMessage`) - o cursor do usuario nunca se move, ele pode
-usar o mouse em outra janela enquanto a automacao roda.
-
-Limitacao importante (documentar tambem na UI, nao so aqui): isso so
-funciona em clients que escutam a fila de mensagens do Windows pra
-mouse/teclado (apps Win32/Qt/SDL classicos). Clients que leem input via raw
-input/DirectInput, ou que verificam a posicao real do cursor
-(`GetCursorPos`) como protecao anti-macro, aceitam o PostMessage sem erro
-nenhum da API mas simplesmente nao reagem - por isso o botao de teste na
-GUI e essencial: e a unica forma de saber se vai funcionar pro client
-especifico do usuario.
-
-Nenhuma funcao aqui decide fallback - so executam ou levantam excecao. A
-decisao de cair pro mouse real e do InputSimulator (core/input_simulator.py).
-"""
-
 from __future__ import annotations
 
 import random
@@ -48,8 +28,6 @@ for _i in range(1, 25):
 
 
 def key_to_vk(key: str) -> int | None:
-    """Mapeia um nome de tecla (mesma nomenclatura do InputSimulator.press_key
-    - "f2", "space", letras/numeros) pro codigo de tecla virtual do Windows."""
     key = (key or "").strip().lower()
     if not key:
         return None
@@ -61,9 +39,6 @@ def key_to_vk(key: str) -> int | None:
 
 
 def find_window_by_title(substring: str) -> int | None:
-    """Acha o primeiro hwnd visivel cujo titulo contem `substring` (case
-    insensitive - titulos de jogo as vezes tem uma parte dinamica, tipo o
-    nome do personagem, entao nao exigimos igualdade exata)."""
     substring = (substring or "").strip().lower()
     if not substring:
         return None
@@ -75,15 +50,13 @@ def find_window_by_title(substring: str) -> int | None:
             title = win32gui.GetWindowText(hwnd)
             if substring in title.lower():
                 found.append(hwnd)
-        return True  # continua enumerando
+        return True
 
     win32gui.EnumWindows(_callback, None)
     return found[0] if found else None
 
 
 def window_title_at_point(x: int, y: int) -> tuple[int, str] | None:
-    """Acha a janela de TOPO (nao um controle filho) na coordenada de tela
-    (x, y) - usado pra calibrar clicando na janela do jogo."""
     try:
         child_hwnd = win32gui.WindowFromPoint((int(x), int(y)))
         if not child_hwnd:
@@ -97,19 +70,6 @@ def window_title_at_point(x: int, y: int) -> tuple[int, str] | None:
 
 
 def post_click(hwnd: int, x: int, y: int, button: str = "left") -> None:
-    """Converte (x, y) absoluto de tela pra coordenada de cliente da janela
-    e manda mouseMove+mouseDown+mouseUp via PostMessage. Levanta a excecao
-    original se o PostMessage falhar - quem chama decide o fallback.
-
-    O WM_MOUSEMOVE antes do down NAO e cosmetico: muitos clients (incluindo
-    os baseados em SDL/OpenGL testados neste projeto) guardam "qual widget
-    esta sob o mouse" a partir das mensagens de MOUSEMOVE que recebem, e
-    processam o botao usando esse estado - nao a coordenada do proprio
-    evento de clique. Sem mandar o MOUSEMOVE primeiro, o client usa a ultima
-    posicao real conhecida do mouse (a do cursor de verdade do usuario) pra
-    decidir o alvo do clique, nao (x, y) - foi exatamente esse bug que o
-    teste manual em jogo real revelou aqui.
-    """
     cx, cy = win32gui.ScreenToClient(hwnd, (int(x), int(y)))
     lparam = win32api.MAKELONG(cx, cy)
 
@@ -126,16 +86,9 @@ def post_click(hwnd: int, x: int, y: int, button: str = "left") -> None:
 
 
 def post_drag(hwnd: int, from_x: int, from_y: int, to_x: int, to_y: int, steps: int = 4) -> None:
-    """Arrasto via PostMessage: mouseDown na origem, alguns WM_MOUSEMOVE
-    intermediarios (delay pequeno entre eles), mouseUp no destino. Isso e so
-    pra o client registrar o arrasto - nao tenta imitar a curva/easing
-    completa do movimento real de mouse (ver InputSimulator.move_to)."""
     fx, fy = win32gui.ScreenToClient(hwnd, (int(from_x), int(from_y)))
     tx, ty = win32gui.ScreenToClient(hwnd, (int(to_x), int(to_y)))
 
-    # Move ate a origem ANTES do mouseDown - mesmo motivo do post_click: o
-    # client precisa achar que o mouse ja esta em cima do item antes de
-    # "pega-lo", senao usa a ultima posicao real conhecida do cursor.
     win32gui.PostMessage(hwnd, win32con.WM_MOUSEMOVE, 0, win32api.MAKELONG(fx, fy))
     time.sleep(random.uniform(0.03, 0.08))
     win32gui.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, win32api.MAKELONG(fx, fy))
@@ -154,10 +107,6 @@ def post_drag(hwnd: int, from_x: int, from_y: int, to_x: int, to_y: int, steps: 
 
 
 def post_key(hwnd: int, key: str) -> None:
-    """Manda WM_KEYDOWN + WM_KEYUP pra tecla `key`. lParam=0: alguns clients
-    exigem os bits de scan-code/repeat-count pra reconhecer a tecla, o que
-    nao esta implementado aqui - e uma das limitacoes que o botao de teste
-    na GUI existe pra expor."""
     vk = key_to_vk(key)
     if vk is None:
         raise ValueError(f"Tecla desconhecida: {key!r}")

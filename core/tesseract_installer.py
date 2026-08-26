@@ -1,13 +1,3 @@
-"""Instala o Tesseract OCR automaticamente se nao estiver presente.
-
-So usado pelo RuneMaker (leitura de mana via OCR) - o AutoFishing nao
-depende disso. Empacotado (PyInstaller), usa o instalador embutido em
-assets/ (ver EasyF.spec - `datas=[("assets","assets")]` ja bundla a pasta
-toda, sem precisar internet nesse momento). Rodando do codigo-fonte (ou se
-o arquivo embutido nao existir por algum motivo), cai para baixar a versao
-mais recente do tesseract-ocr/tesseract no GitHub (repo publico).
-"""
-
 from __future__ import annotations
 
 import json
@@ -26,7 +16,6 @@ REQUEST_TIMEOUT = 15
 
 
 def find_tesseract() -> str | None:
-    """Procura o tesseract.exe no PATH ou no local padrao de instalacao."""
     found = shutil.which("tesseract")
     if found:
         return found
@@ -37,9 +26,6 @@ def find_tesseract() -> str | None:
 
 
 def _bundled_installer_path() -> str | None:
-    """Caminho do instalador embutido no pacote (PyInstaller onefile
-    extrai `datas` para `sys._MEIPASS` em tempo de execucao). Rodando do
-    codigo-fonte, `_MEIPASS` nao existe e isso devolve None."""
     meipass = getattr(sys, "_MEIPASS", None)
     if not meipass:
         return None
@@ -48,7 +34,6 @@ def _bundled_installer_path() -> str | None:
 
 
 def _find_windows_installer_url() -> str | None:
-    """Acha o asset do instalador Windows (64-bit) no ultimo release."""
     try:
         req = urllib.request.Request(
             RELEASES_API, headers={"Accept": "application/vnd.github+json"}
@@ -66,15 +51,6 @@ def _find_windows_installer_url() -> str | None:
 
 
 def install_tesseract(on_progress=None) -> tuple[bool, str]:
-    """Instala o Tesseract silenciosamente (instalador NSIS, `/S`).
-
-    Usa o instalador embutido no pacote se houver (nenhum download
-    necessario); senao, baixa a versao mais recente do GitHub pra uma pasta
-    temporaria. `on_progress`, se informado, e chamado com uma string
-    descrevendo a etapa atual (pensado pra atualizar um label da GUI).
-    Devolve (sucesso, mensagem).
-    """
-
     def report(msg: str) -> None:
         if on_progress:
             on_progress(msg)
@@ -105,7 +81,7 @@ def install_tesseract(on_progress=None) -> tuple[bool, str]:
     except (OSError, subprocess.TimeoutExpired) as exc:
         return False, f"Falha ao executar o instalador: {exc}"
     finally:
-        if downloaded_path:  # nunca apaga o instalador embutido no pacote
+        if downloaded_path:
             try:
                 os.remove(downloaded_path)
             except OSError:

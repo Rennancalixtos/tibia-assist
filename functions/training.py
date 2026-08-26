@@ -1,45 +1,3 @@
-"""Training - mantem o personagem engajado no mesmo alvo de treino (monstro
-parado ou boneco de treino) pelo maior tempo possivel, sem trocar de alvo.
-
-O Target foi desenhado pra "matar e trocar": primeiro alvo valido, ataca,
-espera morrer, seleciona o proximo. Treino e o oposto - o alvo NAO morre e
-NAO deve ser trocado; o objetivo e ficar engajado nele ininterruptamente ate
-o usuario parar ou acabar algum recurso (mana, arma de treino).
-
-Dois modos, escolhidos pelo usuario (`mode` na config):
-
-- "battle_list" (Modo A - monstro de treino, ex: "training monk"): aparece na
-  Battle List como qualquer criatura normal. Reaproveita INTEGRALMENTE a
-  leitura de linha ja implementada em `functions/target.py` (mesmo parsing
-  de slot vazio/nome/selecao por borda), mas com uma WHITELIST FIXA de um
-  unico nome, tratado como alvo permanente: nunca troca, so reforca a
-  selecao se ela cair da lista/perder o destaque. Sub-opcao: tambem conjurar
-  magia de ataque, mesma logica do ManaTraining do RuneMaker
-  (`functions/rune_maker.py`), condicionada ao alvo continuar selecionado.
-
-- "dummy" (Modo B - boneco de treino / Exercise Dummy): objeto fixo do
-  cenario, nao aparece na Battle List - so uma posicao de tela calibrada.
-  Clica periodicamente nela (a arma de treino equipada faz o personagem
-  bater ao clicar no alvo, como atacar uma criatura) e monitora o slot da
-  arma por template matching pra detectar quando ela esgota.
-
-Comum aos dois modos: anti-AFK-kick (acao periodica pra provar atividade ao
-servidor, ja que treino roda por horas sem nenhuma outra interacao) e
-pausas de descanso (mesmo padrao ja usado no AutoFishing).
-
-Tudo baseado em pixels da tela + input simulado. Nenhuma leitura de memoria.
-
-Fora de escopo nesta versao (ver prompt original):
-    - movimentacao automatica ate o boneco/monstro caso o personagem seja
-      empurrado (assume que o usuario se posiciona manualmente antes)
-    - troca automatica de arma de treino ao esgotar (so pausa e avisa)
-    - leitura de dano numerico/golpes por OCR pra estimar progresso no Modo B
-      (contagem de "golpes desferidos" fica como extensao futura - exigiria
-      calibrar uma regiao de numero flutuante de dano, instavel o bastante
-      pra nao entrar nesta versao; o contador de cliques de reforco jah
-      exposto serve como proxy aproximado por enquanto)
-"""
-
 from __future__ import annotations
 
 import time
@@ -100,7 +58,6 @@ class TrainingWorker(BaseWorker):
         elapsed = self._format_elapsed(time.monotonic() - self._session_started_at)
         self.log(f"Training finalizado. Tempo total treinando: {elapsed}.")
 
-    # ------------------------------------------------------------- calibracao
     def _load_template(self, key: str):
         path = self.config.get(key)
         if not path:
@@ -122,7 +79,6 @@ class TrainingWorker(BaseWorker):
             self.log(message)
             self._last_warning = message
 
-    # ------------------------------------------------------------ pausas/afk
     def _schedule_next_break(self) -> None:
         interval = InputSimulator.random_delay(
             self.config.get("break_interval_min", 30), self.config.get("break_interval_max", 300)
@@ -130,10 +86,6 @@ class TrainingWorker(BaseWorker):
         self._next_break_at = time.monotonic() + interval
 
     def maybe_take_break(self) -> bool:
-        """Mesmo padrao do AutoFishing (`AutoFishingWorker.maybe_take_break`)
-        - pausas de descanso pra nao rodar horas seguidas sem nenhum
-        intervalo humano, especialmente relevante pra uma atividade tao
-        prolongada quanto treino."""
         if not self.break_enabled or time.monotonic() < self._next_break_at:
             return True
         duration = InputSimulator.random_delay(
@@ -146,11 +98,6 @@ class TrainingWorker(BaseWorker):
         return True
 
     def maybe_send_anti_afk(self) -> None:
-        """Prova de atividade pro servidor nao derrubar a conexao por
-        inatividade prolongada - um "movimento leve" (tecla de direcao e
-        imediatamente a oposta) como fallback configuravel, pro caso do
-        clique/tecla de ataque em loop nao contar como atividade no servidor
-        do usuario."""
         if not self.anti_afk_enabled or time.monotonic() < self._next_anti_afk_at:
             return
         key_a = (self.config.get("anti_afk_key_a") or "up").strip().lower()
@@ -173,24 +120,18 @@ class TrainingWorker(BaseWorker):
         return f"{h:02d}:{m:02d}:{s:02d}"
 
     def _emit_elapsed(self, force: bool = False) -> None:
-        """Cadencia baixa (1x/s) - um relogio HH:MM:SS nao precisa de mais
-        que isso, e evita inundar a fila de eventos da GUI."""
         now = time.monotonic()
         if not force and now - self._last_elapsed_emit < 1.0:
             return
         self._last_elapsed_emit = now
         self.emit("elapsed", self._format_elapsed(now - self._session_started_at))
 
-    # ------------------------------------------------------------------ ciclo
     def loop(self) -> None:
         if self.mode == "dummy":
             self._dummy_loop()
         else:
             self._battle_list_loop()
 
-    # ======================================================================
-    # Modo A - monstro de treino (Battle List)
-    # ======================================================================
     def _setup_battle_list_mode(self) -> None:
         self.battle_list_region = self.config.get("battle_list_region")
         if not is_valid_region(self.battle_list_region):
@@ -247,11 +188,7 @@ class TrainingWorker(BaseWorker):
             if self.check_mana and not is_valid_region(self.config.get("mana_region")):
                 raise ValueError("Regiao de OCR da mana (magia de ataque) nao configurada.")
 
-    # ------------------------------------------------------------- leitura
     def read_rows(self, frame) -> list[BattleListRow]:
-        """Mesma logica de `TargetWorker.read_rows` (ver functions/target.py)
-        - reaproveita as mesmas funcoes de parsing, sem duplicar a heuristica
-        de deteccao. Vida da criatura nao interessa aqui (alvo nao morre)."""
         rows: list[BattleListRow] = []
         for i in range(self.row_count):
             y0 = i * self.row_height
@@ -285,7 +222,6 @@ class TrainingWorker(BaseWorker):
                 return row
         return None
 
-    # ------------------------------------------------------------------ acao
     def _row_center(self, index: int) -> tuple[int, int]:
         x, y, w, _h = self.battle_list_region
         cy = int(y + index * self.row_height + self.row_height / 2)
@@ -293,9 +229,6 @@ class TrainingWorker(BaseWorker):
         return cx, cy
 
     def select_creature(self, index: int, dry_run: bool = False) -> None:
-        """Mesma acao de selecao configurada no Target (clique simples/duplo/
-        menu de contexto), so que aqui e disparada UMA vez pra prender o
-        alvo permanente - nunca repetida so porque ele continua selecionado."""
         cx, cy = self._row_center(index)
         jitter = int(self.config.get("click_jitter", 2))
 
@@ -303,9 +236,6 @@ class TrainingWorker(BaseWorker):
             self.log(f"[dry-run] acao de selecao ({self.attack_mode}) na linha {index} em ({cx}, {cy})")
             return
 
-        # Mesmo motivo do Target (ver functions/target.py): devolve o cursor
-        # pra onde estava antes do clique, senao o hover em cima da linha
-        # pode mudar a cor do nome e confundir `classify_name_color` depois.
         using_real_mouse = self.mouse.is_using_real_mouse()
         origin = InputSimulator.current_position() if using_real_mouse else None
 
@@ -327,11 +257,6 @@ class TrainingWorker(BaseWorker):
         return read_number(frame)
 
     def _maybe_cast_spell(self) -> None:
-        """Mesma logica do ManaTraining do RuneMaker
-        (`RuneMakerWorker._mana_training_loop`): checa mana minima via OCR,
-        conjura, espera o delay. So chamada quando o alvo de treino ainda
-        esta na lista (ver `_battle_list_loop`) - nunca solta magia com o
-        alvo sumido."""
         if time.monotonic() < self._next_spell_at:
             return
         try:
@@ -359,7 +284,6 @@ class TrainingWorker(BaseWorker):
             self.config.get("spell_delay_min", 1.5), self.config.get("spell_delay_max", 2.5)
         )
 
-    # ------------------------------------------------------------------ loop
     def _battle_list_loop(self) -> None:
         while not self.stopped:
             if not self.wait_for_higher_priority():
@@ -404,9 +328,6 @@ class TrainingWorker(BaseWorker):
                     f"Alvo de treino '{target_row.name or self.creature_name}' selecionado "
                     f"(linha {target_row.index})."
                 )
-            # ja selecionado (borda de attack/follow): so continua monitorando,
-            # sem reforcar a acao a toa - diferente do Target, este alvo nao
-            # se move nem morre.
 
             if self.cast_spell_enabled:
                 self._maybe_cast_spell()
@@ -416,9 +337,6 @@ class TrainingWorker(BaseWorker):
             )):
                 return
 
-    # ======================================================================
-    # Modo B - boneco de treino (objeto fixo)
-    # ======================================================================
     def _setup_dummy_mode(self) -> None:
         self.dummy_position = self.config.get("dummy_position")
         if not (isinstance(self.dummy_position, (list, tuple)) and len(self.dummy_position) == 2):
@@ -437,12 +355,6 @@ class TrainingWorker(BaseWorker):
         self._next_dummy_click_at = 0.0
 
     def _weapon_still_equipped(self) -> bool | None:
-        """None = sem template calibrado (checagem desativada, nao trava o
-        ciclo); True/False = resultado do template match contra o template
-        CALIBRADO da arma equipada - mesmo mecanismo de
-        `functions.rune_maker.slot_is_empty` (so que aqui o template de
-        referencia e o da arma "presente", nao "vazio"; a funcao so compara
-        contra o que foi calibrado, o significado e de quem chama)."""
         if self.weapon_template is None or not is_valid_region(self.weapon_slot_region):
             return None
         frame = self.capture.grab(self.weapon_slot_region)

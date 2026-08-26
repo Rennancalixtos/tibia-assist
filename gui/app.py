@@ -1,16 +1,3 @@
-"""Janela principal do EasyF.
-
-Responsabilidades:
-  - montar as abas (AutoFishing / RuneMaker)
-  - gerenciar o ciclo de vida das threads de trabalho
-  - registrar as hotkeys globais de pausa/parada
-  - drenar a fila de eventos das threads e atualizar a interface
-
-Regra importante: widgets do tkinter so podem ser tocados pela thread da GUI.
-Por isso as rotinas nunca chamam a interface diretamente - elas publicam
-eventos numa `queue.Queue` que este modulo consome no loop do tkinter.
-"""
-
 from __future__ import annotations
 
 import queue
@@ -29,8 +16,8 @@ from gui.settings_dialog import SettingsDialog
 from gui.widgets import LogPanel
 
 try:
-    import keyboard  # hotkeys globais (funciona com a janela do jogo em foco)
-except Exception:  # pragma: no cover - pode faltar permissao no Linux
+    import keyboard
+except Exception:
     keyboard = None
 
 
@@ -51,10 +38,6 @@ TAB_LABELS = {
 
 class App(tk.Tk):
     def __init__(self, config_store: Config, license_manager: LicenseManager) -> None:
-        """`config_store` e `license_manager` vem prontos de main.py - o
-        login (janela standalone, ver gui/license_dialog.py) roda ANTES
-        desta janela ser criada, garantindo que so uma janela apareca por
-        vez (login primeiro, app depois)."""
         super().__init__()
         self.title(f"{APP_NAME} {APP_VERSION}")
         self.geometry("760x760")
@@ -78,12 +61,7 @@ class App(tk.Tk):
         self._schedule_license_check()
         self._schedule_heartbeat()
 
-    # ------------------------------------------------------------ config vars
     def _init_settings_vars(self) -> None:
-        """Cria as variaveis de hotkeys/modo background ja no __init__, antes
-        do dialogo de configuracoes (gui/settings_dialog.py) existir -
-        `_register_hotkeys` roda logo em seguida, no __init__, e precisa
-        delas prontas mesmo sem nenhum widget do dialogo construido ainda."""
         hk = self.config_store.section("hotkeys")
         self.var_pause_key = tk.StringVar(value=hk.get("pause", "pause"))
         self.var_stop_key = tk.StringVar(value=hk.get("stop", "f7"))
@@ -98,9 +76,6 @@ class App(tk.Tk):
         self._settings_dialog: SettingsDialog | None = None
 
     def open_settings(self) -> None:
-        """Abre o dialogo de configuracoes (hotkeys globais + modo
-        background). Reaproveita a janela se ja estiver aberta, em vez de
-        duplicar - so cria de novo se foi fechada (Toplevel destruido)."""
         dialog = self._settings_dialog
         if dialog is not None and dialog.winfo_exists():
             dialog.lift()
@@ -108,9 +83,7 @@ class App(tk.Tk):
             return
         self._settings_dialog = SettingsDialog(self)
 
-    # ---------------------------------------------------------------- layout
     def _build(self) -> None:
-        # Barra de conta (usuario logado + tempo restante de assinatura) ----
         account_bar = ttk.Frame(self, padding=(8, 6, 8, 0))
         account_bar.pack(fill="x")
         self.var_account_info = tk.StringVar(value="")
@@ -123,11 +96,9 @@ class App(tk.Tk):
         ).pack(side="right", padx=(0, 8))
         self._tick_account_info()
 
-        # Abas ---------------------------------------------------------------
         notebook = ttk.Notebook(self)
         notebook.pack(fill="both", expand=True, padx=8, pady=4)
 
-        # Import tardio para evitar dependencia circular entre app e abas.
         from gui.fishing_window import FishingWindow
         from gui.runemaker_window import RuneMakerWindow
         from gui.target_window import TargetWindow
@@ -144,14 +115,9 @@ class App(tk.Tk):
         notebook.add(self.tabs["target"], text="Target")
         notebook.add(self.tabs["training"], text="Training")
 
-        # Log central ----------------------------------------------------------
-        # Uma unica caixa de log pra todas as abas (em vez de uma por aba) -
-        # com varias rotinas rodando ao mesmo tempo (coordenador), ver tudo
-        # junto, em ordem cronologica, importa mais do que ver por aba.
         self.shared_log = LogPanel(self, title="Log", height=10)
         self.shared_log.pack(fill="x", padx=8, pady=(0, 4))
 
-        # Rodape -------------------------------------------------------------
         footer = ttk.Frame(self, padding=(8, 4))
         footer.pack(fill="x")
         ttk.Label(footer, text=DISCLAIMER, foreground="#a33", wraplength=720, justify="left").pack(
@@ -176,7 +142,6 @@ class App(tk.Tk):
                 justify="left",
             ).pack(anchor="w", pady=(2, 0))
 
-    # -------------------------------------------------------------- hotkeys
     def _register_hotkeys(self) -> None:
         self._clear_hotkeys()
         if not self.var_hotkeys_on.get():
@@ -220,9 +185,7 @@ class App(tk.Tk):
         self.config_store.save()
         self._register_hotkeys()
 
-    # -------------------------------------------------------- selecao de tela
     def select_region(self, hint: str):
-        """Esconde a janela, deixa o usuario desenhar um retangulo e restaura."""
         self.withdraw()
         self.update_idletasks()
         try:
@@ -242,10 +205,7 @@ class App(tk.Tk):
             self.lift()
         return point
 
-    # --------------------------------------------------------- modo background
     def _resolve_background_hwnd(self):
-        """Devolve o hwnd atual da janela do jogo (ou None), resolvido de
-        novo pelo titulo salvo - o hwnd muda a cada vez que o jogo abre."""
         title = self.config_store.get("background_mode.window_title", "") or ""
         if not title:
             return None
@@ -326,7 +286,6 @@ class App(tk.Tk):
                 "Isso NAO confirma que o jogo reagiu - confirme visualmente se o clique funcionou.",
             )
 
-    # --------------------------------------------------------------- licenca
     def _save_license(self) -> None:
         self.config_store.save()
 
@@ -335,15 +294,10 @@ class App(tk.Tk):
         self.var_account_info.set(f"Logado como: {email}   |   Acesso restante: {self.license.expires_label}")
 
     def _tick_account_info(self) -> None:
-        """Reagenda a si mesma a cada minuto so pra atualizar o texto (o
-        tempo restante e calculado local, sem precisar checar o servidor)."""
         self._update_account_info()
         self.after(60_000, self._tick_account_info)
 
     def logout(self) -> None:
-        """Limpa a sessao salva (access/refresh token, status) e fecha o
-        programa - main.py detecta `logout_requested` e mostra o login de
-        novo, em vez do app continuar aberto sem licenca valida."""
         if not messagebox.askyesno(
             APP_NAME, "Sair da conta? Vai precisar logar novamente pra usar o programa."
         ):
@@ -371,7 +325,6 @@ class App(tk.Tk):
             )
         self._schedule_license_check()
 
-    # ------------------------------------------------------- sessao unica (heartbeat)
     HEARTBEAT_INTERVAL_MS = 45_000
 
     def _schedule_heartbeat(self) -> None:
@@ -385,20 +338,11 @@ class App(tk.Tk):
             self._force_logout("Sua conta foi acessada em outro local. Esta sessao foi encerrada.")
             return
         if result == "auth_error" and not self.license.valid:
-            # refresh() ja tentou renovar e falhou de verdade (nao e so falta
-            # de rede) - sessao morta por outro motivo que nao "substituida".
             self._force_logout(f"Sessao expirada: {self.license.message}\nFaca login novamente.")
             return
-        # "ok", "network_error" ou "auth_error" com sessao ainda valida em
-        # cache (tolerancia offline) - nao e evidencia de nada, so tenta de
-        # novo no proximo ciclo, do mesmo jeito que a validade de assinatura
-        # ja tolera queda de rede passageira.
         self._schedule_heartbeat()
 
     def _force_logout(self, message: str) -> None:
-        """Encerra a sessao pra sempre a partir de um evento assincrono
-        (sessao substituida / expirada) - mesmo mecanismo do botao "Sair da
-        conta", so sem a confirmacao (o usuario nao pediu isso agora)."""
         self.stop_all()
         self.license.logout()
         self.config_store.save()
@@ -406,14 +350,7 @@ class App(tk.Tk):
         self.logout_requested = True
         self.destroy()
 
-    # ---------------------------------------------------------------- workers
     def build_worker_extras(self) -> dict:
-        """Extras injetados em toda config de worker (`_coordinator` e
-        `_background_hwnd`) - usado tanto pelo `start_worker` de verdade
-        quanto pelos botoes de "Testar..." das abas, pra que um teste se
-        comporte identico a rodar de verdade (mesmo modo de input). Sem
-        isso, um teste monta o worker so com `dict(self.cfg)` e cai sempre
-        no mouse real, mesmo com "Modo background" ligado."""
         extras = {"_coordinator": self.coordinator}
         if self.config_store.get("background_mode.enabled", False):
             extras["_background_hwnd"] = self._resolve_background_hwnd()
@@ -451,25 +388,17 @@ class App(tk.Tk):
             self.stop_worker(key)
 
     def toggle_pause_all(self) -> None:
-        """Pausa/retoma todas as rotinas em execucao (hotkey global)."""
         running = [w for w in self.workers.values() if w.is_alive()]
         if not running:
             return
         for worker in running:
             worker.toggle_pause()
 
-    # -------------------------------------------------------------------- log
     def log(self, message: str, source: str = "app") -> None:
-        """Log central: toda aba chama isso (via `self.app.log(...)` no
-        proprio metodo `log` da aba) em vez de manter uma caixa de log
-        propria - com varias rotinas rodando juntas, ver tudo intercalado
-        importa mais do que ver por aba."""
         label = TAB_LABELS.get(source, source)
         self.shared_log.append(f"[{label}] {message}")
 
-    # ----------------------------------------------------------------- eventos
     def _pump_events(self) -> None:
-        """Consome a fila de eventos das threads e atualiza a interface."""
         try:
             while True:
                 source, kind, payload = self.events.get_nowait()
@@ -509,7 +438,6 @@ class App(tk.Tk):
         finally:
             self.after(100, self._pump_events)
 
-    # ---------------------------------------------------------------- fechar
     def on_close(self) -> None:
         self.stop_all()
         self._clear_hotkeys()
