@@ -15,7 +15,7 @@ from tkinter import messagebox, ttk
 from core.config import ASSETS_DIR
 from core.screen_capture import ScreenCapture, is_valid_region, save_image
 from functions.rune_maker import OCRUnavailable, configure_tesseract, read_number
-from functions.target import sample_name_text_color
+from functions.target import crop_offset, row_is_empty, sample_name_text_color
 from functions.training import TrainingWorker
 from gui.target_window import ATTACK_MODE_LABELS, ATTACK_MODE_VALUES, offset_text
 from gui.widgets import ScrollableFrame, add_field, add_hotkey_field, parse_float, parse_int, region_text
@@ -222,18 +222,36 @@ class TrainingWindow(ttk.Frame):
         ttk.Label(self.box_battle_list, textvariable=self.var_name_offset).grid(row=5, column=1, sticky="w")
 
         self.btn_calibrate_attack_border = ttk.Button(
-            self.box_battle_list, text="Calibrar cor do nome em ATAQUE (vermelho)...",
-            command=lambda: self._calibrate_name_color("attack"),
+            self.box_battle_list, text="Calibrar ATAQUE normal (vermelho)...",
+            command=lambda: self._calibrate_name_color("attack", "normal"),
         )
-        self.btn_calibrate_attack_border.grid(row=6, column=0, padx=4, pady=6, sticky="w")
+        self.btn_calibrate_attack_border.grid(row=6, column=0, padx=4, pady=4, sticky="w")
+        self.btn_calibrate_attack_hover = ttk.Button(
+            self.box_battle_list, text="Calibrar ATAQUE hover (mouse em cima)...",
+            command=lambda: self._calibrate_name_color("attack", "hover"),
+        )
+        self.btn_calibrate_attack_hover.grid(row=6, column=1, padx=4, pady=4, sticky="w")
         self.btn_calibrate_follow_border = ttk.Button(
-            self.box_battle_list, text="Calibrar cor do nome em FOLLOW (verde)...",
-            command=lambda: self._calibrate_name_color("follow"),
+            self.box_battle_list, text="Calibrar FOLLOW normal (verde)...",
+            command=lambda: self._calibrate_name_color("follow", "normal"),
         )
-        self.btn_calibrate_follow_border.grid(row=6, column=1, padx=4, pady=6, sticky="w")
+        self.btn_calibrate_follow_border.grid(row=7, column=0, padx=4, pady=4, sticky="w")
+        self.btn_calibrate_follow_hover = ttk.Button(
+            self.box_battle_list, text="Calibrar FOLLOW hover (mouse em cima)...",
+            command=lambda: self._calibrate_name_color("follow", "hover"),
+        )
+        self.btn_calibrate_follow_hover.grid(row=7, column=1, padx=4, pady=4, sticky="w")
         ttk.Label(self.box_battle_list, textvariable=self.var_name_color_status).grid(
-            row=7, column=0, columnspan=2, sticky="w", padx=4
+            row=8, column=0, columnspan=2, sticky="w", padx=4
         )
+        ttk.Label(
+            self.box_battle_list,
+            text="'Hover' e opcional - so calibre se o bot ficar re-clicando um alvo que ja "
+            "esta atacando (mouse em cima da linha as vezes deixa a cor mais clara).",
+            foreground="#666",
+            wraplength=600,
+            justify="left",
+        ).grid(row=9, column=0, columnspan=2, sticky="w", padx=4)
 
         # Forma de selecao --------------------------------------------------------
         self.box_select = ttk.LabelFrame(parent, text="3. Forma de selecao do alvo (Modo A)")
@@ -402,7 +420,8 @@ class TrainingWindow(ttk.Frame):
         for widget in (
             self.btn_calibrate_all,
             self.btn_pick_region, self.btn_calibrate_row, self.btn_capture_empty, self.entry_empty_threshold,
-            self.btn_pick_name, self.btn_calibrate_attack_border, self.btn_calibrate_follow_border,
+            self.btn_pick_name, self.btn_calibrate_attack_border, self.btn_calibrate_attack_hover,
+            self.btn_calibrate_follow_border, self.btn_calibrate_follow_hover,
             self.btn_calibrate_menu, self.entry_creature_name, self.entry_name_threshold,
             self.entry_missing_retries, self.entry_missing_interval, self.entry_delay_min, self.entry_delay_max,
             self.entry_jitter, self.chk_cast_spell,
@@ -450,15 +469,20 @@ class TrainingWindow(ttk.Frame):
         return [rx - bx, ry - row_top, rw, rh]
 
     def calibrate_all(self) -> None:
-        """Encadeia os 5 passos de calibracao do Modo A em sequencia,
-        reaproveitando exatamente os mesmos metodos dos botoes individuais -
-        so pra nao precisar caçar cada botao na ordem certa toda vez que a
-        regiao ou a altura de linha mudam (o que invalida tudo que depende
-        delas)."""
+        """Encadeia os 4 passos de calibracao BLOQUEANTES do Modo A em
+        sequencia (regiao, altura de linha, linha vazia, nome), reaproveitando
+        exatamente os mesmos metodos dos botoes individuais - so pra nao
+        precisar caçar cada botao na ordem certa toda vez que a regiao ou a
+        altura de linha mudam (o que invalida tudo que depende delas).
+
+        A cor do nome (attack/follow) fica de fora deste encadeamento de
+        proposito - a captura dela e assincrona (espera o usuario posicionar
+        o mouse) e depende do jogo estar naquele estado especifico bem
+        naquele momento, nao encaixa numa sequencia rigida."""
         messagebox.showinfo(
             "Training",
-            "Calibracao guiada: 5 passos em sequencia (regiao, altura de linha, "
-            "linha vazia, nome, bordas). Clique OK pra comecar o passo 1.",
+            "Calibracao guiada: 4 passos em sequencia (regiao, altura de linha, "
+            "linha vazia, nome). Clique OK pra comecar o passo 1.",
         )
         self.pick_battle_list_region()
         if not is_valid_region(self.cfg.get("battle_list_region")):
@@ -475,23 +499,16 @@ class TrainingWindow(ttk.Frame):
             self.log("Calibracao guiada cancelada (template de linha vazia nao definido).")
             return
 
-        messagebox.showinfo("Training", "Passo 4/5: agora selecione a faixa de texto do NOME, numa linha OCUPADA.")
+        messagebox.showinfo("Training", "Passo 4/4: agora selecione a faixa de texto do NOME, numa linha OCUPADA.")
         self.pick_name_crop()
 
+        self.log("Calibracao guiada concluida - falta so a cor do nome (botoes logo abaixo).")
         messagebox.showinfo(
-            "Training", "Passo 5/5: com uma criatura em modo ATTACK (nome vermelho) selecionada no jogo, "
-            "clique OK e marque o texto do nome."
+            "Training",
+            "Calibracao guiada concluida! Falta so calibrar a COR DO NOME - use os botoes "
+            "'Calibrar ATAQUE normal...' e 'Calibrar FOLLOW normal...' com uma criatura em "
+            "cada estado.",
         )
-        self._calibrate_name_color("attack")
-
-        messagebox.showinfo(
-            "Training", "Agora com uma criatura em modo FOLLOW (nome verde) selecionada no jogo, "
-            "clique OK e marque o texto do nome de novo."
-        )
-        self._calibrate_name_color("follow")
-
-        self.log("Calibracao guiada concluida - use 'Testar deteccao' pra conferir.")
-        messagebox.showinfo("Training", "Calibracao guiada concluida! Use 'Testar deteccao' pra conferir.")
 
     def pick_battle_list_region(self) -> None:
         region = self.app.select_region(
@@ -554,33 +571,83 @@ class TrainingWindow(ttk.Frame):
         self.log(f"Faixa de texto do nome definida: {offset_text(offset)}")
 
     def _name_color_status_text(self) -> str:
-        attack_ok = "calibrado" if self.cfg.get("attack_name_hsv_lower") else "nao calibrado"
-        follow_ok = "calibrado" if self.cfg.get("follow_name_hsv_lower") else "nao calibrado"
-        return f"Attack: {attack_ok}   |   Follow: {follow_ok}"
+        def ok(key: str) -> str:
+            return "OK" if self.cfg.get(key) else "-"
 
-    def _calibrate_name_color(self, kind: str) -> None:
-        """Deriva a faixa HSV da COR DO TEXTO do nome (nao de uma borda
-        separada - alguns clients, confirmado neste projeto, so mudam a cor
-        do nome pra indicar selecao). Nao precisa de offset proprio: a
-        classificacao em runtime reusa o mesmo recorte do OCR do nome."""
-        label = "ATAQUE (vermelho)" if kind == "attack" else "FOLLOW (verde)"
-        region = self.app.select_region(
-            f"Selecione o TEXTO do nome (mesma faixa do OCR), numa linha em modo {label}  -  ESC cancela"
+        return (
+            f"Attack: normal={ok('attack_name_hsv_lower')} hover={ok('attack_hover_name_hsv_lower')}"
+            f"   |   Follow: normal={ok('follow_name_hsv_lower')} hover={ok('follow_hover_name_hsv_lower')}"
         )
-        if not region:
+
+    def _calibrate_name_color(self, kind: str, variant: str = "normal") -> None:
+        """Amostra a cor do nome direto da tela, sem arrastar sobre o jogo -
+        evita que o proprio ato de calibrar (com o mouse ali) contamine a
+        amostra com hover sem querer. Da 3s de atraso depois do aviso pro
+        usuario posicionar o mouse como quiser antes da captura automatica."""
+        if (
+            not is_valid_region(self.cfg.get("battle_list_region"))
+            or not self.cfg.get("row_height")
+            or not self.cfg.get("name_crop_offset")
+        ):
+            messagebox.showwarning("Training", "Calibre a regiao, a altura de linha e a faixa do nome primeiro.")
             return
-        with ScreenCapture() as cap:
-            frame = cap.grab(region)
-        lower, upper = sample_name_text_color(frame)
-        if kind == "attack":
-            self.cfg["attack_name_hsv_lower"] = lower
-            self.cfg["attack_name_hsv_upper"] = upper
+        kind_label = "ATAQUE (vermelho)" if kind == "attack" else "FOLLOW (verde)"
+        if variant == "hover":
+            instr = f"deixe o MOUSE EM CIMA da linha da criatura em modo {kind_label}"
         else:
-            self.cfg["follow_name_hsv_lower"] = lower
-            self.cfg["follow_name_hsv_upper"] = upper
+            instr = f"deixe o mouse LONGE da Battle List, com uma criatura em modo {kind_label} visivel"
+        messagebox.showinfo(
+            "Training",
+            f"Depois de clicar OK voce tem 3 segundos: {instr} (na PRIMEIRA linha ocupada). "
+            "A captura e automatica, sem precisar clicar na tela do jogo.",
+        )
+        self.after(3000, lambda: self._do_calibrate_name_color(kind, variant))
+
+    def _do_calibrate_name_color(self, kind: str, variant: str) -> None:
+        cfg = self.worker_config()
+        # calibracao de cor nao depende do alvo de treino - evita que o
+        # TrainingWorker.setup() bloqueie so por falta do nome ainda nao
+        # preenchido nesta tela.
+        if not cfg.get("creature_name"):
+            cfg["creature_name"] = "_calibration_placeholder_"
+        try:
+            worker = TrainingWorker(dict(cfg), self.app.events)
+            worker.setup()
+        except Exception as exc:
+            messagebox.showerror("Training", f"Falha ao capturar: {exc}")
+            return
+
+        crop = None
+        try:
+            frame = worker.capture.grab(worker.battle_list_region)
+            for i in range(worker.row_count):
+                y0, y1 = i * worker.row_height, i * worker.row_height + worker.row_height
+                row_frame = frame[y0:y1, :]
+                if row_frame.size == 0:
+                    continue
+                if not row_is_empty(row_frame, worker.empty_template, worker.empty_threshold):
+                    candidate = crop_offset(row_frame, worker.name_crop_offset)
+                    if candidate is not None and candidate.size > 0:
+                        crop = candidate
+                        break
+        finally:
+            worker.teardown()
+
+        if crop is None:
+            messagebox.showwarning(
+                "Training", "Nenhuma linha ocupada encontrada agora - confira se a criatura "
+                "esta visivel na PRIMEIRA linha da Battle List."
+            )
+            return
+
+        lower, upper = sample_name_text_color(crop)
+        key_prefix = f"{kind}_hover_name" if variant == "hover" else f"{kind}_name"
+        self.cfg[f"{key_prefix}_hsv_lower"] = lower
+        self.cfg[f"{key_prefix}_hsv_upper"] = upper
         self.var_name_color_status.set(self._name_color_status_text())
         self.app.config_store.save()
-        self.log(f"Cor do nome em {label} calibrada: HSV {lower} - {upper}")
+        kind_label = "ATAQUE" if kind == "attack" else "FOLLOW"
+        self.log(f"Cor do nome em {kind_label} ({variant}) calibrada: HSV {lower} - {upper}")
 
     def calibrate_context_menu(self) -> None:
         point1 = self.app.select_point(

@@ -216,8 +216,14 @@ class TrainingWorker(BaseWorker):
                 "treino nao vai ser reconhecido na lista."
             )
 
-        self.attack_range = self._hsv_range("attack_name_hsv_lower", "attack_name_hsv_upper")
-        self.follow_range = self._hsv_range("follow_name_hsv_lower", "follow_name_hsv_upper")
+        self.attack_ranges = [r for r in (
+            self._hsv_range("attack_name_hsv_lower", "attack_name_hsv_upper"),
+            self._hsv_range("attack_hover_name_hsv_lower", "attack_hover_name_hsv_upper"),
+        ) if r]
+        self.follow_ranges = [r for r in (
+            self._hsv_range("follow_name_hsv_lower", "follow_name_hsv_upper"),
+            self._hsv_range("follow_hover_name_hsv_lower", "follow_hover_name_hsv_upper"),
+        ) if r]
 
         self.attack_mode = self.config.get("attack_mode", "single_click")
         self.context_menu_offset = self.config.get("context_menu_offset") or [0, 0]
@@ -268,7 +274,7 @@ class TrainingWorker(BaseWorker):
                         name = read_name(crop)
                     except OCRUnavailable as exc:
                         self.warn_once(f"OCR indisponivel: {exc}")
-                    selection = classify_name_color(crop, self.attack_range, self.follow_range)
+                    selection = classify_name_color(crop, self.attack_ranges, self.follow_ranges)
 
             rows.append(BattleListRow(index=i, occupied=True, name=name, selection=selection))
         return rows

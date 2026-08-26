@@ -179,11 +179,19 @@ DEFAULTS: dict[str, Any] = {
         # Faixa HSV da COR DO TEXTO do nome quando selecionado (vermelho=attack,
         # verde=follow) - alguns clients so mudam a cor do nome pra indicar
         # selecao, sem nenhuma borda separada; classificado no mesmo recorte
-        # do OCR do nome (`name_crop_offset`), sem offset proprio.
+        # do OCR do nome (`name_crop_offset`), sem offset proprio. Cada estado
+        # tem uma variante "normal" e uma "hover" (mouse em cima da linha
+        # deixa a MESMA cor mais clara em alguns clients) - as duas sao
+        # aceitas como validas, senao o hover (inclusive o do proprio bot,
+        # logo apos clicar) e lido como "parou de atacar".
         "attack_name_hsv_lower": None,
         "attack_name_hsv_upper": None,
+        "attack_hover_name_hsv_lower": None,
+        "attack_hover_name_hsv_upper": None,
         "follow_name_hsv_lower": None,
         "follow_name_hsv_upper": None,
+        "follow_hover_name_hsv_lower": None,
+        "follow_hover_name_hsv_upper": None,
         # Offset [dx, dy, largura, altura] da mini barra de vida - so exposto
         # no log de "Testar leitura" nesta versao (ver functions/target.py)
         "life_bar_offset": None,
@@ -222,8 +230,12 @@ DEFAULTS: dict[str, Any] = {
         "name_crop_offset": None,
         "attack_name_hsv_lower": None,
         "attack_name_hsv_upper": None,
+        "attack_hover_name_hsv_lower": None,
+        "attack_hover_name_hsv_upper": None,
         "follow_name_hsv_lower": None,
         "follow_name_hsv_upper": None,
+        "follow_hover_name_hsv_lower": None,
+        "follow_hover_name_hsv_upper": None,
         # "single_click" | "double_click" | "context_menu"
         "attack_mode": "single_click",
         "context_menu_offset": [0, 0],

@@ -177,8 +177,8 @@ def sample_name_text_color(frame: np.ndarray, tolerance: tuple[int, int, int] = 
 
 def classify_name_color(
     crop: np.ndarray | None,
-    attack_range: tuple[list[int], list[int]] | None,
-    follow_range: tuple[list[int], list[int]] | None,
+    attack_ranges: list[tuple[list[int], list[int]]] | None,
+    follow_ranges: list[tuple[list[int], list[int]]] | None,
     min_coverage: float = 0.15,
 ) -> str:
     """Classifica "attack"/"follow"/"none" pela cor do proprio TEXTO do nome
@@ -186,7 +186,15 @@ def classify_name_color(
     nao desenham nenhuma borda de selecao separada, so mudam a cor do nome.
     So considera os pixels de TEXTO (via `_text_foreground_mask`), nao o
     recorte inteiro, senao o fundo escuro (a maior parte da area) dilui a
-    fracao e nada bate o `min_coverage`."""
+    fracao e nada bate o `min_coverage`.
+
+    `attack_ranges`/`follow_ranges` sao LISTAS de faixas HSV (nao uma so):
+    o nome as vezes muda de tom quando o mouse do usuario (ou o proprio bot,
+    logo antes de devolver o cursor) fica em cima da linha - hover deixa a
+    mesma cor mais clara em alguns clients, um tom genuinamente diferente do
+    "atacando" normal. Calibrando as duas variantes (normal e hover) e
+    aceitando QUALQUER uma delas como valida, o bot nao confunde hover com
+    "parou de atacar" e fica re-clicando a toa."""
     if crop is None or crop.size == 0:
         return "none"
     mask = _text_foreground_mask(crop)
@@ -195,15 +203,18 @@ def classify_name_color(
         return "none"
     hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
 
-    def coverage(hsv_range) -> float:
-        if not hsv_range:
+    def coverage(hsv_ranges) -> float:
+        if not hsv_ranges:
             return 0.0
-        lower, upper = hsv_range
-        color_mask = cv2.inRange(hsv, np.array(lower, dtype=np.uint8), np.array(upper, dtype=np.uint8))
-        return int(np.count_nonzero((color_mask > 0) & mask)) / total_fg
+        best = 0.0
+        for lower, upper in hsv_ranges:
+            color_mask = cv2.inRange(hsv, np.array(lower, dtype=np.uint8), np.array(upper, dtype=np.uint8))
+            cov = int(np.count_nonzero((color_mask > 0) & mask)) / total_fg
+            best = max(best, cov)
+        return best
 
-    red_cov = coverage(attack_range)
-    green_cov = coverage(follow_range)
+    red_cov = coverage(attack_ranges)
+    green_cov = coverage(follow_ranges)
     if red_cov >= min_coverage and red_cov >= green_cov:
         return "attack"
     if green_cov >= min_coverage:
@@ -289,9 +300,15 @@ class TargetWorker(BaseWorker):
                 "whitelist/blacklist nao vai reconhecer nomes."
             )
 
-        self.attack_range = self._hsv_range("attack_name_hsv_lower", "attack_name_hsv_upper")
-        self.follow_range = self._hsv_range("follow_name_hsv_lower", "follow_name_hsv_upper")
-        if not self.attack_range and not self.follow_range:
+        self.attack_ranges = [r for r in (
+            self._hsv_range("attack_name_hsv_lower", "attack_name_hsv_upper"),
+            self._hsv_range("attack_hover_name_hsv_lower", "attack_hover_name_hsv_upper"),
+        ) if r]
+        self.follow_ranges = [r for r in (
+            self._hsv_range("follow_name_hsv_lower", "follow_name_hsv_upper"),
+            self._hsv_range("follow_hover_name_hsv_lower", "follow_hover_name_hsv_upper"),
+        ) if r]
+        if not self.attack_ranges and not self.follow_ranges:
             self.log(
                 "AVISO: cor do nome em attack/follow nao calibrada - o Target "
                 "vai reforcar a acao de ataque a cada ciclo, mesmo ja selecionado."
@@ -372,7 +389,7 @@ class TargetWorker(BaseWorker):
                     # mesmo recorte do nome: alguns clients (confirmado neste
                     # projeto) indicam selecao mudando so a COR do texto do
                     # nome, sem nenhuma borda separada pra calibrar.
-                    selection = classify_name_color(crop, self.attack_range, self.follow_range)
+                    selection = classify_name_color(crop, self.attack_ranges, self.follow_ranges)
 
             life_pct = read_life_percentage(row_frame, self.life_bar_offset) if self.life_bar_offset else None
 
