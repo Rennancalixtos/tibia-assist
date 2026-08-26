@@ -4,7 +4,7 @@ import queue
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from core import background_input, region_selector
+from core import background_input, profiles as profile_store, region_selector
 from core.config import Config
 from core.coordinator import AutomationCoordinator
 from core.elevation import is_admin
@@ -477,13 +477,29 @@ class App(tk.Tk):
         finally:
             self.after(100, self._pump_events)
 
-    def on_close(self) -> None:
-        self.stop_all()
-        self._clear_hotkeys()
+    def sync_config_from_ui(self) -> None:
         for tab in self.tabs.values():
             try:
                 tab.save_config()
             except Exception:
                 pass
+
+        hk = self.config_store.section("hotkeys")
+        hk["pause"] = self.var_pause_key.get().strip().lower() or "pause"
+        hk["stop"] = self.var_stop_key.get().strip().lower() or "f7"
+        hk["enabled"] = bool(self.var_hotkeys_on.get())
+
+        bgcfg = self.config_store.section("background_mode")
+        bgcfg["enabled"] = bool(self.var_background_enabled.get())
+        bgcfg["window_title"] = self.var_background_window.get().strip()
+
+    def apply_profile_data(self, data: dict) -> None:
+        self.config_store.data = profile_store.merge_into_config(self.config_store.data, data)
+        self.config_store.save()
+
+    def on_close(self) -> None:
+        self.stop_all()
+        self._clear_hotkeys()
+        self.sync_config_from_ui()
         self.config_store.save()
         self.destroy()
