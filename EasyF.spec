@@ -10,7 +10,7 @@ a = Analysis(
     ["main.py"],
     pathex=[],
     binaries=[],
-    datas=[("assets", "assets")],
+    datas=[("assets", "assets"), ("img", "img")],
     hiddenimports=[
         "mss.windows",
         "pydirectinput",
