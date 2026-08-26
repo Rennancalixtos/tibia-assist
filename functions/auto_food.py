@@ -6,7 +6,7 @@ import pyautogui as pg
 import win32gui
 
 from core import background_input
-from core.config import BASE_DIR
+from core.config import RESOURCE_DIR
 from core.worker import BaseWorker
 
 pg.useImageNotFoundException(False)
@@ -28,7 +28,7 @@ class AutoFoodWorker(BaseWorker):
         self.check_interval = float(self.config.get("check_interval", 1.0))
         self.eat_cooldown = float(self.config.get("eat_cooldown", 120.0))
         self.icons = {
-            name: os.path.join(BASE_DIR, "img", "food", f"{name}.png") for name in ICON_NAMES
+            name: os.path.join(RESOURCE_DIR, "img", "food", f"{name}.png") for name in ICON_NAMES
         }
         self.register_with_coordinator("auto_food")
         self.log("AutoFood iniciado (clique em segundo plano, sem fallback pro mouse real).")
