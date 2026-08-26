@@ -1,19 +1,3 @@
-"""Janela/dialogo de login+cadastro.
-
-Duas situacoes usam o mesmo formulario (por isso o mixin `_LoginForm`):
-
-- No boot, ANTES da janela principal existir: `run_startup_login` cria uma
-  janela Tk standalone, sozinha na tela - so depois de logar com sucesso a
-  janela principal e criada. Nao reaproveita a janela principal como "master"
-  de um Toplevel aqui porque, no Windows, um Toplevel "transient" de uma
-  janela raiz escondida (`withdraw`) por vezes nao e exibido pelo gerenciador
-  de janelas - testado e confirmado neste projeto.
-- Depois que a janela principal ja existe (licenca caiu no meio do uso, ou
-  o usuario tenta iniciar uma rotina sem sessao ativa): `ensure_license`
-  mostra um dialogo modal (Toplevel) por cima da janela principal, que fica
-  visivel mas bloqueada por tras (grab_set).
-"""
-
 from __future__ import annotations
 
 import tkinter as tk
@@ -22,21 +6,10 @@ from tkinter import ttk
 
 from core.license import LicenseManager
 
-# Cooldown minimo (segundos) entre tentativas de login/cadastro - evita
-# martelar a API do backend com cliques repetidos (engano do usuario ou
-# tentativa de forca bruta de senha). Vale pros dois botoes juntos, ja que
-# ambos batem no mesmo backend pequeno.
 RATE_LIMIT_SECONDS = 3
 
 
 class _LoginForm:
-    """Mixin com o formulario de login/cadastro e os handlers dos botoes.
-
-    A classe que usa este mixin precisa definir `self.license_manager`,
-    `self.on_save` e `self.accepted` antes de chamar `_build_form()`, e ser
-    ela mesma um widget Tk/Toplevel (usa `self` como container/janela).
-    """
-
     def _build_form(self) -> None:
         body = ttk.Frame(self, padding=16)
         body.pack(fill="both", expand=True)
@@ -86,12 +59,7 @@ class _LoginForm:
             return None
         return email, password
 
-    # ------------------------------------------------------------- rate limit
     def _start_cooldown(self) -> None:
-        """Desativa Entrar/Cadastrar por `RATE_LIMIT_SECONDS` - chamado so
-        depois que a chamada ao backend termina (nao antes), pra garantir o
-        intervalo minimo de verdade entre uma tentativa e a proxima, em vez
-        de descontar do cooldown o tempo que a propria chamada levou."""
         if self._cooldown_job is not None:
             self.after_cancel(self._cooldown_job)
         self.btn_login.configure(state="disabled")
@@ -104,11 +72,11 @@ class _LoginForm:
             self.btn_login.configure(state="normal")
             self.btn_signup.configure(state="normal")
         except tk.TclError:
-            pass  # janela ja fechada antes do cooldown acabar
+            pass
 
     def _login(self) -> None:
         if self._cooldown_job is not None:
-            return  # cooldown ativo - o "Enter" nao passa pelo estado disabled do botao
+            return
         creds = self._credentials()
         if creds is None:
             return
@@ -128,7 +96,7 @@ class _LoginForm:
 
     def _signup(self) -> None:
         if self._cooldown_job is not None:
-            return  # cooldown ativo
+            return
         creds = self._credentials()
         if creds is None:
             return
@@ -150,7 +118,6 @@ class _LoginForm:
         self._start_cooldown()
 
     def _maybe_offer_checkout(self) -> None:
-        """Se o login funcionou mas nao ha assinatura ativa, oferece o checkout."""
         if not self.license_manager.logged_in:
             return
         if self.license_manager.section.get("status") == "active":
@@ -172,8 +139,6 @@ class _LoginForm:
 
 
 class LicenseDialog(tk.Toplevel, _LoginForm):
-    """Dialogo modal usado quando a janela principal ja existe."""
-
     def __init__(self, master: tk.Tk, license_manager: LicenseManager, on_save):
         tk.Toplevel.__init__(self, master)
         self.license_manager = license_manager
@@ -192,12 +157,6 @@ class LicenseDialog(tk.Toplevel, _LoginForm):
 
 
 class LoginWindow(tk.Tk, _LoginForm):
-    """Janela standalone usada ANTES da janela principal existir.
-
-    Assim so uma janela aparece por vez: login primeiro, app depois - em vez
-    de mostrar as duas juntas.
-    """
-
     def __init__(self, license_manager: LicenseManager, on_save):
         tk.Tk.__init__(self)
         self.license_manager = license_manager
@@ -212,8 +171,6 @@ class LoginWindow(tk.Tk, _LoginForm):
 
 
 def ensure_license(master: tk.Tk, license_manager: LicenseManager, on_save) -> bool:
-    """Mostra o dialogo modal se a sessao atual nao for valida (janela
-    principal ja existe). Devolve True se ok."""
     if license_manager.valid:
         return True
     dialog = LicenseDialog(master, license_manager, on_save)
@@ -222,8 +179,6 @@ def ensure_license(master: tk.Tk, license_manager: LicenseManager, on_save) -> b
 
 
 def run_startup_login(license_manager: LicenseManager, on_save) -> bool:
-    """Mostra a janela de login standalone se a sessao atual nao for valida
-    (usado ANTES de criar a janela principal). Devolve True se ok."""
     if license_manager.valid:
         return True
     window = LoginWindow(license_manager, on_save)

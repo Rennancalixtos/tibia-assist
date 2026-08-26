@@ -1,5 +1,3 @@
-"""Widgets auxiliares reutilizados pelas duas abas da GUI."""
-
 from __future__ import annotations
 
 import tkinter as tk
@@ -7,14 +5,6 @@ from tkinter import ttk
 
 
 class ScrollableFrame(ttk.Frame):
-    """Area com barra de rolagem vertical para abas com muitos campos.
-
-    O conteudo real deve ser criado dentro de `.body` (um ttk.Frame), nao
-    diretamente neste widget. A roda do mouse so rola quando o cursor esta
-    sobre a area (bind/unbind em <Enter>/<Leave>), para nao capturar o scroll
-    de outras abas/janelas.
-    """
-
     def __init__(self, master):
         super().__init__(master)
 
@@ -46,8 +36,6 @@ class ScrollableFrame(ttk.Frame):
 
 
 class LogPanel(ttk.LabelFrame):
-    """Caixa de texto somente leitura com o historico de acoes."""
-
     def __init__(self, master, title: str = "Log", height: int = 10, max_lines: int = 500):
         super().__init__(master, text=title)
         self.max_lines = max_lines
@@ -64,7 +52,6 @@ class LogPanel(ttk.LabelFrame):
     def append(self, message: str) -> None:
         self.text.configure(state="normal")
         self.text.insert("end", message + "\n")
-        # Descarta linhas antigas para a memoria nao crescer indefinidamente.
         total = int(self.text.index("end-1c").split(".")[0])
         if total > self.max_lines:
             self.text.delete("1.0", f"{total - self.max_lines}.0")
@@ -78,21 +65,11 @@ class LogPanel(ttk.LabelFrame):
 
 
 class HotkeyButton(ttk.Button):
-    """Botao que mostra a tecla atual e, ao ser clicado, espera a proxima
-    tecla apertada pra substituir - evita digitar o nome exato da tecla
-    (ex: "f6") na mao, que e a fonte mais comum de hotkey mal configurada.
-    """
-
-    # Teclas modificadoras sozinhas nao viram hotkey (o clique ainda esta
-    # "esperando" a tecla de verdade - apertar so Shift/Ctrl nao conta).
     _IGNORED_KEYSYMS = {
         "Shift_L", "Shift_R", "Control_L", "Control_R", "Alt_L", "Alt_R",
         "Caps_Lock", "Num_Lock", "Scroll_Lock", "Super_L", "Super_R",
         "Meta_L", "Meta_R",
     }
-    # Mapeia o keysym do Tkinter pro nome de tecla usado no resto do
-    # projeto (mesma convencao de core/background_input.py e das libs de
-    # input - nomes curtos em minusculo: "f6", "space", "enter", "esc"...).
     _KEYSYM_MAP = {
         "Return": "enter",
         "Escape": "esc",
@@ -133,7 +110,7 @@ class HotkeyButton(ttk.Button):
 
     def _on_key(self, event) -> None:
         if event.keysym in self._IGNORED_KEYSYMS:
-            return  # continua esperando uma tecla de verdade
+            return
         name = self._normalize(event.keysym)
         if not name:
             return
@@ -156,7 +133,6 @@ class HotkeyButton(ttk.Button):
 
 
 def add_hotkey_field(parent, row: int, label: str, variable, width: int = 10, hint: str = "", on_change=None):
-    """Como `add_field`, mas com um `HotkeyButton` no lugar do Entry."""
     ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=4, pady=3)
     button = HotkeyButton(parent, variable, width=width, on_change=on_change)
     button.grid(row=row, column=1, sticky="w", padx=4, pady=3)
@@ -166,7 +142,6 @@ def add_hotkey_field(parent, row: int, label: str, variable, width: int = 10, hi
 
 
 def add_field(parent, row: int, label: str, variable, width: int = 12, hint: str = ""):
-    """Adiciona um par label/entry numa grade e devolve o widget de entrada."""
     ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=4, pady=3)
     entry = ttk.Entry(parent, textvariable=variable, width=width)
     entry.grid(row=row, column=1, sticky="w", padx=4, pady=3)
@@ -178,7 +153,6 @@ def add_field(parent, row: int, label: str, variable, width: int = 12, hint: str
 
 
 def region_text(region) -> str:
-    """Formata uma regiao/ponto para exibicao."""
     if not region:
         return "nao configurado"
     if len(region) == 4:

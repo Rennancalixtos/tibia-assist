@@ -1,14 +1,3 @@
-"""AutoFishing - detecta agua na regiao configurada e clica com a vara.
-
-Fluxo de cada ciclo:
-    1. captura a regiao monitorada (mss)
-    2. procura tiles de agua (HSV ou template matching, escolha do usuario)
-    3. move o mouse ate um tile com jitter de alguns pixels e clica
-    4. espera um intervalo aleatorio (animacao da pesca) e repete
-
-Tudo baseado em pixels da tela + input simulado. Nenhuma leitura de memoria.
-"""
-
 from __future__ import annotations
 
 import random
@@ -22,9 +11,6 @@ from core.screen_capture import ScreenCapture, is_valid_region, load_image
 from core.worker import BaseWorker
 
 
-# --------------------------------------------------------------------------
-# Deteccao
-# --------------------------------------------------------------------------
 def find_water_tiles_hsv(
     frame: np.ndarray,
     hsv_lower: list[int],
@@ -33,18 +19,6 @@ def find_water_tiles_hsv(
     tile_size: int = 32,
     min_tile_coverage: float = 0.35,
 ) -> list[tuple[int, int, int]]:
-    """Encontra tiles de agua alinhadas a um grid de SQM (32x32 por padrao).
-
-    Detectar por contorno/blob devolveria um unico centroide para um lago
-    grande e continuo, entao sortear entre "candidatos" nao mudaria nada. Aqui
-    a mascara de agua e varrida em celulas de `tile_size` px (o tamanho do SQM
-    do Tibia) e cada celula com cobertura de agua suficiente entra como um
-    alvo distinto, dando varios pontos genuinamente diferentes para sortear em
-    cada lance.
-
-    Devolve (cx, cy, cobertura_pct) em coordenadas RELATIVAS ao frame,
-    ordenados da maior para a menor cobertura.
-    """
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     lower = np.array(hsv_lower, dtype=np.uint8)
     upper = np.array(hsv_upper, dtype=np.uint8)
@@ -82,11 +56,6 @@ def draw_tile_grid(
     tiles: list[tuple[int, int, int]],
     tile_size: int = 32,
 ) -> np.ndarray:
-    """Desenha o grid de SQM sobre `frame` e destaca os tiles validos.
-
-    Usado apenas para a pre-visualizacao manual ("Testar deteccao"); nao entra
-    no loop de pesca.
-    """
     tile_size = max(4, int(tile_size))
     out = frame.copy()
     height, width = out.shape[:2]
@@ -109,17 +78,10 @@ def draw_tile_grid(
 def find_water_template(
     frame: np.ndarray, template: np.ndarray, threshold: float = 0.80
 ) -> list[tuple[int, int, int]]:
-    """Encontra ocorrencias do template de agua via cv2.matchTemplate.
-
-    Devolve (cx, cy, score*1000) relativos ao frame, com supressao simples de
-    deteccoes sobrepostas.
-    """
     if template is None or frame.shape[0] < template.shape[0] or frame.shape[1] < template.shape[1]:
         return []
 
     result = cv2.matchTemplate(frame, template, cv2.TM_CCOEFF_NORMED)
-    # Templates de cor totalmente uniforme geram NaN/Inf (variancia zero);
-    # zeramos esses valores para nao virarem falsos positivos.
     result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
     ys, xs = np.where(result >= float(threshold))
     th, tw = template.shape[:2]
@@ -133,8 +95,6 @@ def find_water_template(
     picked: list[tuple[int, int, int]] = []
     for x, y, score in candidates:
         cx, cy = x + tw // 2, y + th // 2
-        # Supressao de nao-maximos: descarta qualquer deteccao que se sobreponha
-        # a uma ja aceita (duas tiles distintas nao se sobrepoem).
         if any(abs(cx - px) < tw and abs(cy - py) < th for px, py, _ in picked):
             continue
         picked.append((cx, cy, int(score * 1000)))
@@ -144,15 +104,6 @@ def find_water_template(
 
 
 def sample_hsv_range(frame: np.ndarray, tolerance: tuple[int, int, int] = (10, 60, 60)):
-    """Calcula uma faixa HSV a partir de um recorte de agua feito pelo usuario.
-
-    Usa a mediana de cada canal +/- tolerancia, o que e mais estavel do que a
-    media quando o recorte inclui alguns pixels que nao sao agua.
-
-    Devolve (lower, upper, reference_brightness) - o terceiro valor e a
-    mediana do canal V no momento da calibracao, usada depois como baseline
-    pro ajuste dinamico dia/noite (`dynamic_v_bounds`).
-    """
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     median = np.median(hsv.reshape(-1, 3), axis=0)
     th, ts, tv = tolerance
@@ -170,8 +121,6 @@ def sample_hsv_range(frame: np.ndarray, tolerance: tuple[int, int, int] = (10, 6
 
 
 def median_brightness(frame: np.ndarray) -> float:
-    """Mediana do canal V (brilho) da regiao inteira - usada pra medir se a
-    cena ficou mais clara/escura desde a calibracao (ciclo dia/noite)."""
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     return float(np.median(hsv[:, :, 2]))
 
@@ -179,14 +128,6 @@ def median_brightness(frame: np.ndarray) -> float:
 def dynamic_v_bounds(
     hsv_lower: list[int], hsv_upper: list[int], current_brightness: float, reference_brightness: float
 ) -> tuple[list[int], list[int], float]:
-    """Desloca so o canal V (brilho) da faixa calibrada pela diferenca entre
-    o brilho atual da cena e o brilho no momento da calibracao.
-
-    H (matiz) e S (saturacao) da agua mudam pouco entre dia e noite; o que
-    muda e o brilho geral da cena - por isso so o V e ajustado, e H/S ficam
-    exatamente como o usuario calibrou. Devolve (lower_ajustado, upper_ajustado,
-    delta) - `delta` e so pra decidir quando logar a mudanca.
-    """
     delta = current_brightness - reference_brightness
     lower = list(hsv_lower)
     upper = list(hsv_upper)
@@ -195,9 +136,6 @@ def dynamic_v_bounds(
     return lower, upper, delta
 
 
-# --------------------------------------------------------------------------
-# Worker
-# --------------------------------------------------------------------------
 class AutoFishingWorker(BaseWorker):
     name_label = "fishing"
 
@@ -230,14 +168,9 @@ class AutoFishingWorker(BaseWorker):
         self.break_enabled = bool(self.config.get("break_enabled", True))
         self._schedule_next_break()
 
-        # Ajuste dia/noite: desloca o V calibrado pelo delta de brilho da
-        # cena a cada ciclo; None (nunca calibrado com essa versao) desativa
-        # o ajuste e usa o HSV estatico, como antes.
         self.hsv_reference_brightness = self.config.get("hsv_reference_brightness")
         self._last_logged_delta = 0.0
 
-        # Recalibracao periodica por EMA (opt-in) - reamostra celulas de alta
-        # confianca e reajusta a faixa calibrada lentamente com o tempo.
         self.auto_recalibrate_enabled = bool(self.config.get("auto_recalibrate_enabled", False))
         self.auto_recalibrate_interval_minutes = float(self.config.get("auto_recalibrate_interval_minutes", 15) or 15)
         self.ema_alpha = float(self.config.get("ema_alpha", 0.15))
@@ -249,19 +182,13 @@ class AutoFishingWorker(BaseWorker):
             f"vara={tuple(self.rod_slot)}, backend={InputSimulator.backend_name()})."
         )
 
-    # ------------------------------------------------------------- pausas
     def _schedule_next_break(self) -> None:
-        """Sorteia daqui a quanto tempo a proxima pausa de descanso acontece."""
         interval = InputSimulator.random_delay(
             self.config.get("break_interval_min", 60), self.config.get("break_interval_max", 300)
         )
         self._next_break_at = time.monotonic() + interval
 
     def maybe_take_break(self) -> bool:
-        """Se chegou a hora, para de pescar por um periodo aleatorio.
-
-        Devolve False se a rotina foi parada durante a pausa.
-        """
         if not self.break_enabled or time.monotonic() < self._next_break_at:
             return True
         duration = InputSimulator.random_delay(
@@ -297,13 +224,10 @@ class AutoFishingWorker(BaseWorker):
         )
 
     def _recalibrate_ema(self) -> None:
-        """Reamostra os pixels acumulados de celulas de alta confianca e
-        ajusta a faixa HSV calibrada lentamente (EMA) - so roda se o usuario
-        ligou "Recalibracao automatica periodica"."""
         if not self._recent_water_pixels:
             return
         samples = np.concatenate(self._recent_water_pixels, axis=0)
-        median = np.median(samples, axis=0)  # H, S, V da amostra atual
+        median = np.median(samples, axis=0)
         alpha = self.ema_alpha
 
         hsv_lower = list(self.config.get("hsv_lower", [90, 60, 40]))
@@ -330,9 +254,6 @@ class AutoFishingWorker(BaseWorker):
         self._recent_water_pixels.clear()
 
     def _collect_recalibration_samples(self, frame: np.ndarray, targets: list[tuple[int, int, int]]) -> None:
-        """Guarda os pixels das celulas com cobertura >=90% pra usar na
-        proxima recalibracao EMA - so as de alta confianca, pra nao
-        "aprender" ruido de falsos positivos."""
         tile_size = int(self.config.get("tile_size", 32))
         half = tile_size // 2
         hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -392,26 +313,17 @@ class AutoFishingWorker(BaseWorker):
                     return
                 continue
 
-            # Cada item de `targets` ja e um SQM distinto (grid de tile_size px),
-            # entao sortear entre todos eles varia de verdade o tile clicado -
-            # ao contrario de sortear entre centroides de blob, que colapsam
-            # num unico candidato quando o lago e uma mancha continua.
             cx, cy, _score = random.choice(targets) if randomize else targets[0]
 
-            # Sorteia tambem o ponto dentro do SQM escolhido (nao so o centro),
-            # deixando uma margem para nao cair bem na borda do tile.
             half = max(0, tile_size // 2 - 3)
             if half:
                 cx += random.randint(-half, half)
                 cy += random.randint(-half, half)
 
-            # Abre a vara com o botao direito (equivalente a "usar" o item) antes
-            # de aplica-la na agua com o esquerdo - mecanica de "use with" do Tibia.
             self.mouse.click(rod_x, rod_y, button="right", jitter=jitter)
             if not self.sleep(InputSimulator.random_delay(0.10, 0.25)):
                 return
 
-            # Coordenada relativa -> absoluta na tela
             abs_x, abs_y = rx + cx, ry + cy
             clicked_x, clicked_y = self.mouse.click(abs_x, abs_y, button=button, jitter=jitter)
 

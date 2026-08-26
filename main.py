@@ -1,13 +1,3 @@
-"""EasyF - ponto de entrada.
-
-Uso:
-    python main.py
-
-Automacao baseada exclusivamente em captura de tela + simulacao de mouse e
-teclado. O programa nao le nem escreve na memoria do jogo, nao injeta codigo
-no cliente e nao esconde nada do sistema operacional.
-"""
-
 from __future__ import annotations
 
 import sys
@@ -22,7 +12,6 @@ REQUIRED = [
 
 
 def check_dependencies() -> list[str]:
-    """Devolve a lista de pacotes obrigatorios que nao estao instalados."""
     missing = []
     for module_name, package_name in REQUIRED:
         try:
@@ -33,15 +22,6 @@ def check_dependencies() -> list[str]:
 
 
 def main() -> int:
-    # So faz sentido rodando do fonte (`python main.py`): o .exe empacotado
-    # ja pede elevacao sozinho via manifest do Windows (uac_admin=True no
-    # EasyF.spec), ANTES de qualquer linha de Python rodar - nenhum
-    # relancamento manual e necessario ali. Fazer esse mesmo relancamento
-    # aqui pro .exe empacotado e redundante e PERIGOSO logo apos o
-    # auto-update: dispara uma SEGUNDA extracao do bootloader onefile do
-    # PyInstaller bem em cima do arquivo que acabou de ser trocado, o que
-    # pode falhar com "Failed to load Python DLL" (visto em producao na
-    # v1.1.5) - corrida com antivirus/cache de arquivo no exe recem-escrito.
     if not getattr(sys, "frozen", False):
         from core.elevation import is_admin, relaunch_elevated
 
@@ -76,20 +56,13 @@ def main() -> int:
 
     config_store = Config()
 
-    # Update -> login -> app. So uma janela por vez (splash, depois login,
-    # depois app - nunca duas ao mesmo tempo). A atualizacao e silenciosa
-    # (sem perguntar) e best-effort: qualquer falha (sem internet, backend
-    # fora do ar) e ignorada e o boot continua normal.
     api_base_url = config_store.get("license.api_base_url", "")
     update_result = run_update_check(api_base_url, APP_VERSION)
     if update_result == "updated":
-        return 0  # o script auxiliar troca o .exe e reabre o programa
+        return 0
 
     license_manager = LicenseManager(config_store.section("license"))
 
-    # So uma janela por vez: login primeiro (standalone), app depois. Se o
-    # usuario clicar em "Sair da conta" dentro do app, volta pro login em vez
-    # de fechar o programa inteiro.
     while True:
         if license_manager.logged_in:
             license_manager.refresh()

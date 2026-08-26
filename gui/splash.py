@@ -1,18 +1,3 @@
-"""Splash de atualizacao - mostrada ANTES do login, no boot do programa.
-
-Checa e (se houver uma versao nova) baixa/aplica a atualizacao sozinha, sem
-perguntar - so avisa o progresso ("Verificando...", "Baixando X%",
-"Concluido"). Roda numa thread separada pra nao travar a janela, reportando
-progresso por fila consumida pelo `after()` da propria splash - mesmo padrao
-de `App._pump_events`.
-
-Janela standalone (`tk.Tk`), nunca `Toplevel` de outra janela: no Windows, um
-Toplevel "transient" de uma raiz escondida (`withdraw`) por vezes nao e
-exibido pelo gerenciador de janelas - bug real, encontrado e corrigido nesta
-mesma sessao pro login (ver gui/license_dialog.py). Splash -> login -> app
-sao 3 janelas `tk.Tk()` sequenciais, nunca duas ao mesmo tempo.
-"""
-
 from __future__ import annotations
 
 import queue
@@ -33,7 +18,6 @@ class SplashScreen(tk.Tk):
         super().__init__()
         self.api_base_url = api_base_url
         self.current_version = current_version
-        # "checking" | "no_update" | "updated" | "error" | "skip"
         self.result = "checking"
         self._events: "queue.Queue[tuple]" = queue.Queue()
 
@@ -64,7 +48,6 @@ class SplashScreen(tk.Tk):
 
         self.after(50, self._start_check)
 
-    # --------------------------------------------------------------- thread
     def _start_check(self) -> None:
         threading.Thread(target=self._worker_check, daemon=True).start()
         self.after(100, self._pump)
@@ -72,7 +55,7 @@ class SplashScreen(tk.Tk):
     def _worker_check(self) -> None:
         try:
             update_info = check_for_update(self.api_base_url, self.current_version)
-        except Exception as exc:  # nunca deve travar o boot por causa disso
+        except Exception as exc:
             self._events.put(("error", f"Falha ao checar atualizacao: {exc}"))
             return
 
@@ -93,7 +76,6 @@ class SplashScreen(tk.Tk):
 
         self._events.put(("updated", None) if applied else ("done", None))
 
-    # ------------------------------------------------------------------ pump
     def _pump(self) -> None:
         try:
             while True:
@@ -103,8 +85,6 @@ class SplashScreen(tk.Tk):
                 elif kind == "progress":
                     downloaded, total = payload
                     if not total:
-                        # Servidor nao mandou Content-Length - so da pra mostrar
-                        # os bytes baixados, sem percentual/barra determinada.
                         self.var_status.set(f"Baixando atualizacao... {downloaded} bytes")
                     else:
                         pct = int(downloaded * 100 / total)
@@ -131,7 +111,6 @@ class SplashScreen(tk.Tk):
         if self.result == "checking":
             self.after(100, self._pump)
 
-    # ------------------------------------------------------------------ erro
     def _show_error(self, message: str) -> None:
         self.progress.stop()
         self.progress.pack_forget()
@@ -159,12 +138,6 @@ class SplashScreen(tk.Tk):
 
 
 def run_update_check(api_base_url: str, current_version: str) -> str:
-    """Mostra a splash e roda a checagem/atualizacao. Devolve:
-
-    - "updated": o .exe foi trocado e o script auxiliar vai reabrir o
-      programa - quem chamar isso deve encerrar o processo atual agora.
-    - "no_update" / "skip": nada a fazer, segue o boot normal (login/app).
-    """
     splash = SplashScreen(api_base_url, current_version)
     splash.mainloop()
     return splash.result

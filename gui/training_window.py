@@ -1,14 +1,5 @@
-"""Aba Training: mantem o personagem engajado no mesmo alvo de treino
-(monstro parado na Battle List ou boneco de treino fixo), sem trocar de alvo.
-
-Reaproveita a mesma cara/convencao do Target (secoes numeradas, calibracao
-que salva na hora) e do RuneMaker (seletor de modo que habilita/desabilita
-os campos relevantes de cada um, em vez de duas telas separadas).
-"""
-
 from __future__ import annotations
 
-import copy
 import os
 import tkinter as tk
 from tkinter import messagebox, ttk
@@ -18,7 +9,6 @@ from core.screen_capture import ScreenCapture, is_valid_region, save_image
 from functions.rune_maker import OCRUnavailable, configure_tesseract, read_number
 from functions.target import crop_offset, row_is_empty, sample_name_text_color
 from functions.training import TrainingWorker
-from gui.target_window import ATTACK_MODE_LABELS, ATTACK_MODE_VALUES, BATTLE_LIST_CALIBRATION_KEYS, offset_text
 from gui.widgets import ScrollableFrame, add_field, add_hotkey_field, parse_float, parse_int, region_text
 
 MODE_LABELS = {
@@ -26,6 +16,21 @@ MODE_LABELS = {
     "dummy": "Boneco de treino (objeto fixo)",
 }
 MODE_VALUES = {label: value for value, label in MODE_LABELS.items()}
+
+ATTACK_MODE_LABELS = {
+    "single_click": "Clique simples",
+    "double_click": "Clique duplo",
+    "context_menu": "Botao direito + menu",
+}
+ATTACK_MODE_VALUES = {label: value for value, label in ATTACK_MODE_LABELS.items()}
+
+
+def offset_text(offset) -> str:
+    if not offset:
+        return "nao configurado"
+    if len(offset) == 4:
+        return f"dx={offset[0]}  dy={offset[1]}  {offset[2]}x{offset[3]}"
+    return f"dx={offset[0]}  dy={offset[1]}"
 
 
 class TrainingWindow(ttk.Frame):
@@ -40,7 +45,6 @@ class TrainingWindow(ttk.Frame):
             value=MODE_LABELS.get(self.cfg.get("mode", "battle_list"), MODE_LABELS["battle_list"])
         )
 
-        # Modo A: Battle List --------------------------------------------------
         self.var_region = tk.StringVar(value=region_text(self.cfg.get("battle_list_region")))
         self.var_row_height = tk.StringVar(value=str(self.cfg.get("row_height") or "nao calibrado"))
         self.var_empty_template = tk.StringVar(
@@ -73,7 +77,6 @@ class TrainingWindow(ttk.Frame):
         self.var_spell_delay_min = tk.StringVar(value=str(self.cfg.get("spell_delay_min", 1.5)))
         self.var_spell_delay_max = tk.StringVar(value=str(self.cfg.get("spell_delay_max", 2.5)))
 
-        # Modo B: boneco de treino ----------------------------------------------
         self.var_dummy_position = tk.StringVar(value=region_text(self.cfg.get("dummy_position")))
         self.var_weapon_region = tk.StringVar(value=region_text(self.cfg.get("weapon_slot_region")))
         self.var_weapon_template = tk.StringVar(
@@ -85,7 +88,6 @@ class TrainingWindow(ttk.Frame):
         self.var_click_interval_min = tk.StringVar(value=str(self.cfg.get("click_interval_min", 2.0)))
         self.var_click_interval_max = tk.StringVar(value=str(self.cfg.get("click_interval_max", 4.0)))
 
-        # Comum: anti-AFK e pausas -----------------------------------------------
         self.var_afk_enabled = tk.BooleanVar(value=bool(self.cfg.get("anti_afk_enabled", False)))
         self.var_afk_interval = tk.StringVar(value=str(self.cfg.get("anti_afk_interval_minutes", 10)))
         self.var_afk_key_a = tk.StringVar(value=self.cfg.get("anti_afk_key_a", "up"))
@@ -111,10 +113,6 @@ class TrainingWindow(ttk.Frame):
 
         self._build()
 
-        # Dialogo de configuracao (secoes 1 a 8) - construido ja aqui (nao so
-        # no primeiro clique em "Configurar...") pra que os widgets ja
-        # existam quando `_on_attack_mode_change`/`_on_mode_change` rodam
-        # logo abaixo (ver `open_config_dialog`).
         self._config_dialog = tk.Toplevel(self)
         self._config_dialog.title("Configurar - Training")
         self._config_dialog.geometry("640x600")
@@ -128,11 +126,9 @@ class TrainingWindow(ttk.Frame):
         self._on_attack_mode_change()
         self._on_mode_change()
 
-    # ---------------------------------------------------------------- layout
     def _build(self) -> None:
         body = self.body
 
-        # Execucao ------------------------------------------------------------
         box_run = ttk.LabelFrame(body, text="1. Execucao")
         box_run.grid(row=0, column=0, sticky="ew", pady=4)
 
@@ -175,9 +171,7 @@ class TrainingWindow(ttk.Frame):
     def _hide_config_dialog(self) -> None:
         self._config_dialog.withdraw()
 
-    # ------------------------------------------------------- dialogo de config
     def _build_config_dialog(self, parent) -> None:
-        # Modo ------------------------------------------------------------------
         box_mode = ttk.LabelFrame(parent, text="1. Modo")
         box_mode.grid(row=0, column=0, sticky="ew", pady=4)
         for i, label in enumerate(MODE_LABELS.values()):
@@ -185,7 +179,6 @@ class TrainingWindow(ttk.Frame):
                 box_mode, text=label, value=label, variable=self.var_mode, command=self._on_mode_change
             ).grid(row=0, column=i, sticky="w", padx=4, pady=3)
 
-        # Modo A: Battle List -----------------------------------------------------
         self.box_battle_list = ttk.LabelFrame(parent, text="2. Battle List (Modo A)")
         self.box_battle_list.grid(row=1, column=0, sticky="ew", pady=4)
         self.btn_calibrate_all = ttk.Button(
@@ -193,32 +186,27 @@ class TrainingWindow(ttk.Frame):
             command=self.calibrate_all,
         )
         self.btn_calibrate_all.grid(row=0, column=0, columnspan=2, padx=4, pady=(6, 4), sticky="w")
-        self.btn_import_calibration = ttk.Button(
-            self.box_battle_list, text="Importar calibracao do Target...",
-            command=lambda: self.import_calibration_from("target"),
-        )
-        self.btn_import_calibration.grid(row=1, column=0, columnspan=2, padx=4, pady=(0, 10), sticky="w")
 
         self.btn_pick_region = ttk.Button(
             self.box_battle_list, text="Selecionar regiao da Battle List...", command=self.pick_battle_list_region
         )
-        self.btn_pick_region.grid(row=2, column=0, padx=4, pady=6, sticky="w")
-        ttk.Label(self.box_battle_list, textvariable=self.var_region).grid(row=2, column=1, sticky="w")
+        self.btn_pick_region.grid(row=1, column=0, padx=4, pady=6, sticky="w")
+        ttk.Label(self.box_battle_list, textvariable=self.var_region).grid(row=1, column=1, sticky="w")
 
         self.btn_calibrate_row = ttk.Button(
             self.box_battle_list, text="Calibrar altura de linha...", command=self.calibrate_row_height
         )
-        self.btn_calibrate_row.grid(row=3, column=0, padx=4, pady=6, sticky="w")
-        ttk.Label(self.box_battle_list, textvariable=self.var_row_height).grid(row=3, column=1, sticky="w")
+        self.btn_calibrate_row.grid(row=2, column=0, padx=4, pady=6, sticky="w")
+        ttk.Label(self.box_battle_list, textvariable=self.var_row_height).grid(row=2, column=1, sticky="w")
 
         self.btn_capture_empty = ttk.Button(
             self.box_battle_list, text="Capturar linha vazia (template)...", command=self.capture_row_empty_template
         )
-        self.btn_capture_empty.grid(row=4, column=0, padx=4, pady=6, sticky="w")
-        ttk.Label(self.box_battle_list, textvariable=self.var_empty_template).grid(row=4, column=1, sticky="w")
+        self.btn_capture_empty.grid(row=3, column=0, padx=4, pady=6, sticky="w")
+        ttk.Label(self.box_battle_list, textvariable=self.var_empty_template).grid(row=3, column=1, sticky="w")
 
         self.entry_empty_threshold = add_field(
-            self.box_battle_list, 5, "Cobertura minima do slot vazio (%)", self.var_empty_threshold, 8, "0 a 100 (padrao 90)"
+            self.box_battle_list, 4, "Cobertura minima do slot vazio (%)", self.var_empty_threshold, 8, "0 a 100 (padrao 90)"
         )
 
         self.btn_pick_name = ttk.Button(
@@ -259,7 +247,6 @@ class TrainingWindow(ttk.Frame):
             justify="left",
         ).grid(row=10, column=0, columnspan=2, sticky="w", padx=4)
 
-        # Forma de selecao --------------------------------------------------------
         self.box_select = ttk.LabelFrame(parent, text="3. Forma de selecao do alvo (Modo A)")
         self.box_select.grid(row=2, column=0, sticky="ew", pady=4)
         self.radios_attack_mode = []
@@ -277,7 +264,6 @@ class TrainingWindow(ttk.Frame):
         self.btn_calibrate_menu.grid(row=1, column=0, columnspan=2, padx=4, pady=6, sticky="w")
         ttk.Label(self.box_select, textvariable=self.var_menu_offset).grid(row=1, column=2, sticky="w")
 
-        # Alvo de treino ------------------------------------------------------
         self.box_target = ttk.LabelFrame(parent, text="4. Alvo de treino permanente (Modo A)")
         self.box_target.grid(row=3, column=0, sticky="ew", pady=4)
         self.entry_creature_name = add_field(
@@ -296,7 +282,6 @@ class TrainingWindow(ttk.Frame):
         self.entry_delay_max = add_field(self.box_target, 5, "Delay maximo por ciclo (s)", self.var_delay_max, 8, "ex: 1.4")
         self.entry_jitter = add_field(self.box_target, 6, "Variacao do clique (px)", self.var_jitter, 8, "+/- pixels")
 
-        # Magia de ataque (opcional) -------------------------------------------
         self.box_spell = ttk.LabelFrame(parent, text="5. Magia de ataque (opcional, treino de magic level - Modo A)")
         self.box_spell.grid(row=4, column=0, sticky="ew", pady=4)
         self.chk_cast_spell = ttk.Checkbutton(
@@ -324,7 +309,6 @@ class TrainingWindow(ttk.Frame):
         self.btn_test_ocr_mana = ttk.Button(self.box_spell, text="Testar OCR da mana", command=self.test_mana_ocr)
         self.btn_test_ocr_mana.grid(row=6, column=0, padx=4, pady=(4, 6), sticky="w")
 
-        # Modo B: boneco de treino -------------------------------------------
         self.box_dummy = ttk.LabelFrame(parent, text="6. Boneco de treino / Exercise Dummy (Modo B)")
         self.box_dummy.grid(row=5, column=0, sticky="ew", pady=4)
         self.btn_pick_dummy = ttk.Button(
@@ -358,7 +342,6 @@ class TrainingWindow(ttk.Frame):
             justify="left",
         ).grid(row=6, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 4))
 
-        # Anti-AFK ------------------------------------------------------------
         box_afk = ttk.LabelFrame(parent, text="7. Anti-AFK-kick")
         box_afk.grid(row=6, column=0, sticky="ew", pady=4)
         ttk.Checkbutton(
@@ -376,7 +359,6 @@ class TrainingWindow(ttk.Frame):
             justify="left",
         ).grid(row=4, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 4))
 
-        # Pausas periodicas -----------------------------------------------------
         box_break = ttk.LabelFrame(parent, text="8. Pausas periodicas (descanso)")
         box_break.grid(row=7, column=0, sticky="ew", pady=4)
         ttk.Checkbutton(
@@ -406,7 +388,6 @@ class TrainingWindow(ttk.Frame):
             justify="left",
         ).grid(row=8, column=0, sticky="w", pady=(4, 0))
 
-        # Salvar / Fechar -------------------------------------------------------
         actions_bar = ttk.Frame(parent)
         actions_bar.grid(row=9, column=0, sticky="e", pady=(8, 4))
         ttk.Button(actions_bar, text="Salvar config", command=self.save_config).pack(side="left", padx=4)
@@ -414,7 +395,6 @@ class TrainingWindow(ttk.Frame):
 
         parent.columnconfigure(0, weight=1)
 
-    # ------------------------------------------------------------ modo/estado
     def _on_mode_change(self) -> None:
         self._update_field_states()
 
@@ -424,7 +404,7 @@ class TrainingWindow(ttk.Frame):
         dummy_state = "normal" if is_dummy else "disabled"
 
         for widget in (
-            self.btn_calibrate_all, self.btn_import_calibration,
+            self.btn_calibrate_all,
             self.btn_pick_region, self.btn_calibrate_row, self.btn_capture_empty, self.entry_empty_threshold,
             self.btn_pick_name, self.btn_calibrate_attack_border, self.btn_calibrate_attack_hover,
             self.btn_calibrate_follow_border, self.btn_calibrate_follow_hover,
@@ -458,11 +438,7 @@ class TrainingWindow(ttk.Frame):
         is_menu = ATTACK_MODE_VALUES.get(self.var_attack_mode.get()) == "context_menu"
         self.btn_calibrate_menu.configure(state="normal" if (is_menu and not is_dummy) else "disabled")
 
-    # ------------------------------------------------------------ calibracao
     def _relative_row_offset(self, region) -> list[int] | None:
-        """Mesma logica de `TargetWindow._relative_row_offset` (ver
-        gui/target_window.py) - converte uma regiao ABSOLUTA no offset
-        relativo ao topo-esquerda da linha em que ela caiu."""
         battle_region = self.cfg.get("battle_list_region")
         row_height = self.cfg.get("row_height")
         if not is_valid_region(battle_region) or not row_height:
@@ -474,58 +450,7 @@ class TrainingWindow(ttk.Frame):
         row_top = by + row_index * row_height
         return [rx - bx, ry - row_top, rw, rh]
 
-    def import_calibration_from(self, source_key: str) -> None:
-        """Copia a calibracao de Battle List (regiao, altura, template de
-        linha vazia, faixa/cores do nome, forma de ataque) de outra aba com
-        o mesmo formato de config (`BATTLE_LIST_CALIBRATION_KEYS`, ver
-        gui/target_window.py) - evita recalibrar tudo de novo quando as
-        duas abas leem a MESMA Battle List na tela. So copia campos que a
-        origem ja tem preenchidos."""
-        source_cfg = self.app.config_store.section(source_key)
-        imported = 0
-        for key in BATTLE_LIST_CALIBRATION_KEYS:
-            value = source_cfg.get(key)
-            if value not in (None, "", [], {}):
-                self.cfg[key] = copy.deepcopy(value)
-                imported += 1
-        if imported == 0:
-            messagebox.showwarning("Training", f"A aba '{source_key}' ainda nao tem nada calibrado.")
-            return
-        self._refresh_calibration_vars()
-        self.app.config_store.save()
-        self.log(f"Calibracao importada de '{source_key}' ({imported} campo(s)).")
-        messagebox.showinfo(
-            "Training", f"Calibracao importada de '{source_key}'! Confira com 'Testar deteccao'."
-        )
-
-    def _refresh_calibration_vars(self) -> None:
-        """Atualiza os StringVars da tela com os valores atuais de `self.cfg`
-        - usado depois de uma importacao (os campos mudam sem passar pelos
-        metodos de calibracao normais, que ja atualizam a var na hora)."""
-        self.var_region.set(region_text(self.cfg.get("battle_list_region")))
-        row_height = self.cfg.get("row_height")
-        self.var_row_height.set(f"{row_height}px" if row_height else "nao calibrado")
-        self.var_empty_template.set("Template calibrado" if self.cfg.get("row_empty_template") else "nao calibrado")
-        self.var_empty_threshold.set(str(int(float(self.cfg.get("empty_match_threshold", 0.90)) * 100)))
-        self.var_name_offset.set(offset_text(self.cfg.get("name_crop_offset")))
-        self.var_name_color_status.set(self._name_color_status_text())
-        self.var_attack_mode.set(
-            ATTACK_MODE_LABELS.get(self.cfg.get("attack_mode", "single_click"), "Clique simples")
-        )
-        self.var_menu_offset.set(offset_text(self.cfg.get("context_menu_offset")))
-        self._on_attack_mode_change()
-
     def calibrate_all(self) -> None:
-        """Encadeia os 4 passos de calibracao BLOQUEANTES do Modo A em
-        sequencia (regiao, altura de linha, linha vazia, nome), reaproveitando
-        exatamente os mesmos metodos dos botoes individuais - so pra nao
-        precisar caçar cada botao na ordem certa toda vez que a regiao ou a
-        altura de linha mudam (o que invalida tudo que depende delas).
-
-        A cor do nome (attack/follow) fica de fora deste encadeamento de
-        proposito - a captura dela e assincrona (espera o usuario posicionar
-        o mouse) e depende do jogo estar naquele estado especifico bem
-        naquele momento, nao encaixa numa sequencia rigida."""
         messagebox.showinfo(
             "Training",
             "Calibracao guiada: 4 passos em sequencia (regiao, altura de linha, "
@@ -570,10 +495,6 @@ class TrainingWindow(ttk.Frame):
         self.log(f"Regiao da Battle List definida: {region_text(region)}")
 
     def calibrate_row_height(self) -> None:
-        """Arraste um retangulo cobrindo EXATAMENTE uma linha (do topo dela
-        ao topo da linha seguinte) - a altura do retangulo vira `row_height`.
-        Mais facil de acertar do que 2 cliques as cegas: da pra ver o
-        retangulo se ajustando em tempo real antes de soltar o botao."""
         region = self.app.select_region(
             "Arraste cobrindo UMA linha inteira da Battle List (do topo dela ate o "
             "topo da linha seguinte)  -  ESC cancela"
@@ -627,10 +548,6 @@ class TrainingWindow(ttk.Frame):
         )
 
     def _calibrate_name_color(self, kind: str, variant: str = "normal") -> None:
-        """Amostra a cor do nome direto da tela, sem arrastar sobre o jogo -
-        evita que o proprio ato de calibrar (com o mouse ali) contamine a
-        amostra com hover sem querer. Da 3s de atraso depois do aviso pro
-        usuario posicionar o mouse como quiser antes da captura automatica."""
         if (
             not is_valid_region(self.cfg.get("battle_list_region"))
             or not self.cfg.get("row_height")
@@ -652,9 +569,6 @@ class TrainingWindow(ttk.Frame):
 
     def _do_calibrate_name_color(self, kind: str, variant: str) -> None:
         cfg = self.worker_config()
-        # calibracao de cor nao depende do alvo de treino - evita que o
-        # TrainingWorker.setup() bloqueie so por falta do nome ainda nao
-        # preenchido nesta tela.
         if not cfg.get("creature_name"):
             cfg["creature_name"] = "_calibration_placeholder_"
         try:
@@ -772,19 +686,12 @@ class TrainingWindow(ttk.Frame):
         self.app.config_store.save()
         self.log(f"Template da arma de treino equipada salvo em {path}")
 
-    # ------------------------------------------------------------- testes
     def worker_config(self) -> dict:
-        """Inclui os mesmos extras (`_coordinator`/`_background_hwnd`) que
-        `app.start_worker` injeta - sem isso, "Testar deteccao" cairia sempre
-        no mouse real, mesmo com "Modo background" ligado."""
         cfg = dict(self.cfg)
         cfg.update(self.app.build_worker_extras())
         return cfg
 
     def test_detection(self) -> None:
-        """Dry-run - Modo A mostra a leitura da Battle List (linha
-        encontrada, selecionada ou nao); Modo B mostra o resultado do
-        template match da arma de treino, sem clicar em nada."""
         self.save_config()
         cfg = self.worker_config()
         try:
@@ -824,7 +731,6 @@ class TrainingWindow(ttk.Frame):
         self.log(message)
         messagebox.showinfo("Training - Testar deteccao", message)
 
-    # -------------------------------------------------------------- controles
     def save_config(self) -> None:
         self.cfg["mode"] = MODE_VALUES.get(self.var_mode.get(), "battle_list")
 
@@ -893,7 +799,6 @@ class TrainingWindow(ttk.Frame):
     def stop(self) -> None:
         self.app.stop_worker(self.worker_key)
 
-    # ------------------------------------------------------------- callbacks
     def log(self, message: str) -> None:
         self.app.log(message, source=self.worker_key)
 

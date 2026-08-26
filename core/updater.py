@@ -1,17 +1,3 @@
-"""Auto-update: consulta o backend por uma versao mais nova e, se aceito,
-baixa e troca o .exe sozinho.
-
-O repositorio no GitHub e privado, entao o app nunca fala com a API do
-GitHub diretamente (exigiria embutir um token no binario, legivel por
-qualquer um). Em vez disso, o backend (que ja existe na Vercel para a
-licenca) expoe `/api/update/latest` e `/api/update/download`, que fazem essa
-consulta usando um token guardado so no servidor.
-
-So funciona quando empacotado com PyInstaller (`sys.frozen`) - rodando a
-partir do codigo-fonte, so informa que ha uma versao nova, sem tentar
-substituir nada (nao ha .exe pra trocar).
-"""
-
 from __future__ import annotations
 
 import json
@@ -36,12 +22,6 @@ def _parse_version(value: str) -> tuple[int, ...]:
 
 
 def check_for_update(api_base_url: str, current_version: str) -> dict | None:
-    """Consulta {api_base_url}/api/update/latest.
-
-    Devolve None se nao houver versao mais nova, se a checagem falhar, ou se
-    api_base_url nao estiver configurado - nunca bloqueia o boot do app por
-    causa disso.
-    """
     api_base_url = (api_base_url or "").rstrip("/")
     if not api_base_url:
         return None
@@ -61,21 +41,6 @@ def check_for_update(api_base_url: str, current_version: str) -> dict | None:
 
 
 def _looks_like_valid_exe(path: str, expected_size: int) -> bool:
-    """Checagem minima de integridade antes de confiar no arquivo baixado.
-
-    Sem isso, um download truncado (rede instavel) OU um antivirus que
-    mexeu no arquivo enquanto ele ainda estava sendo escrito (confirmado na
-    pratica: o Windows Defender interceptou o `_update_*.exe` pra analise
-    automatica no meio do download, com o hash do arquivo mudando entre
-    duas leituras dele) acaba sendo trocado no lugar do .exe em uso -
-    quebrando o proximo boot com "Failed to load Python DLL" (o bootloader
-    do PyInstaller nao consegue extrair um onefile corrompido).
-
-    Duas checagens bem baratas, sem tentar validar a assinatura/conteudo
-    inteiro: o tamanho baixado bate com o Content-Length (quando o servidor
-    informou um) e o arquivo comeca com o cabecalho "MZ" de um executavel
-    PE de verdade.
-    """
     try:
         size = os.path.getsize(path)
     except OSError:
@@ -93,17 +58,6 @@ def _looks_like_valid_exe(path: str, expected_size: int) -> bool:
 
 
 def apply_update(api_base_url: str, update_info: dict, on_progress=None) -> bool:
-    """Baixa o novo .exe e reinicia o programa com ele no lugar do atual.
-
-    So funciona empacotado (PyInstaller/`sys.frozen`); rodando do
-    codigo-fonte devolve False sem fazer nada, ja que nao ha .exe pra
-    substituir. Quem chamar isso e receber True deve encerrar o processo
-    atual imediatamente (o .exe em uso precisa ser liberado para a troca).
-
-    `on_progress(downloaded_bytes, total_bytes)`, se informado, e chamado a
-    cada pedaco baixado (`total_bytes` pode ser 0 se o servidor nao mandar
-    Content-Length).
-    """
     if not getattr(sys, "frozen", False):
         return False
 
@@ -144,8 +98,6 @@ def apply_update(api_base_url: str, update_info: dict, on_progress=None) -> bool
             pass
         return False
 
-    # Nao da pra sobrescrever o .exe em execucao - um script auxiliar espera
-    # este processo terminar, faz a troca e reabre o programa.
     script_path = os.path.join(tempfile.gettempdir(), "tibia_assist_update.bat")
     with open(script_path, "w", encoding="utf-8") as fp:
         fp.write(

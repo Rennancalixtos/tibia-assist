@@ -1,13 +1,3 @@
-"""Simulacao de mouse e teclado.
-
-Somente input sintetico de alto nivel (SendInput/pyautogui). Nao ha injecao
-de DLL, hooking do processo do jogo nem escrita em memoria.
-
-No Windows usamos `pydirectinput` por padrao porque muitos clientes que usam
-DirectInput ignoram eventos gerados pelo pyautogui. Em outros sistemas (ou se
-o pydirectinput nao estiver instalado) caimos para o pyautogui.
-"""
-
 from __future__ import annotations
 
 import math
@@ -19,42 +9,30 @@ import pytweening
 
 from core import background_input
 
-try:  # pragma: no cover - so existe no Windows, mas o resto do modulo roda sem
+try:
     import win32gui
 except Exception:
     win32gui = None
 
-# Desliga o fail-safe de canto de tela? NAO. Mantemos ligado de proposito:
-# mover o mouse para o canto superior esquerdo aborta o script - e a valvula
-# de escape mais confiavel que o usuario tem.
 pyautogui.FAILSAFE = True
-pyautogui.PAUSE = 0.0  # controlamos os delays manualmente
+pyautogui.PAUSE = 0.0
 
-try:  # pragma: no cover - depende do SO
+try:
     import pydirectinput
 
     pydirectinput.FAILSAFE = True
     pydirectinput.PAUSE = 0.0
     _HAS_DIRECTINPUT = True
-except Exception:  # ImportError em Linux/macOS
+except Exception:
     pydirectinput = None
     _HAS_DIRECTINPUT = False
 
 
 class InputSimulator:
-    """Cliques e teclas com pequenas variacoes aleatorias.
-
-    A aleatoriedade existe para nao repetir exatamente o mesmo pixel/intervalo
-    a cada iteracao (movimento humano nao e deterministico), nao para burlar
-    qualquer sistema de deteccao.
-    """
-
     def __init__(self, prefer_directinput: bool = True, background_hwnd=None, on_fallback=None):
         self.use_directinput = bool(prefer_directinput and _HAS_DIRECTINPUT)
         self.background_hwnd = background_hwnd
         self.on_fallback = on_fallback
-        # Uma vez que o modo background falha, esta instancia nunca mais tenta
-        # de novo - evita martelar PostMessage numa janela morta a cada clique.
         self._background_disabled = False
 
     def _background_failed(self, exc: Exception) -> None:
@@ -70,30 +48,11 @@ class InputSimulator:
             return False
         return True
 
-    # ------------------------------------------------------------------ mouse
     @property
     def _backend(self):
         return pydirectinput if self.use_directinput else pyautogui
 
     def move_to(self, x: int, y: int, jitter: int = 0) -> tuple[int, int]:
-        """Arrasta o cursor ate (x, y) (com jitter) em vez de teleportar.
-
-        Cada passo do trajeto usa `pyautogui.moveTo` (absoluto, via
-        `SetCursorPos`), NUNCA movimento relativo nem o `moveTo` absoluto do
-        `pydirectinput`:
-
-        - `pydirectinput.moveTo` normaliza a coordenada usando so as
-          dimensoes do monitor primario, ignorando o desktop virtual - em
-          qualquer ponto fora dele (comum com 2+ monitores) calcula a posicao
-          errada.
-        - Movimento relativo (`SendInput` sem `MOUSEEVENTF_ABSOLUTE`) sofre a
-          curva de aceleracao do ponteiro do Windows, que pode amplificar o
-          delta de forma imprevisivel e jogar o cursor num canto da tela -
-          foi exatamente isso que disparava o fail-safe.
-
-        `SetCursorPos` nao tem nenhum desses problemas: e absoluto, exato e
-        funciona em qualquer monitor do desktop virtual.
-        """
         tx = int(x) + random.randint(-jitter, jitter) if jitter else int(x)
         ty = int(y) + random.randint(-jitter, jitter) if jitter else int(y)
 
@@ -105,9 +64,6 @@ class InputSimulator:
             steps = max(8, min(45, int(distance / 6)))
             tween = random.choice((pytweening.easeOutQuad, pytweening.easeInOutQuad, pytweening.easeOutCubic))
 
-            # Arco perpendicular a linha reta, com magnitude limitada para nao
-            # desviar demais em arrastos longos - uma mao humana raramente
-            # move o mouse em linha perfeitamente reta.
             bow = random.uniform(-0.12, 0.12) * min(distance, 300)
             mid_x = (start_x + tx) / 2 - bow * (ty - start_y) / distance
             mid_y = (start_y + ty) / 2 + bow * (tx - start_x) / distance
@@ -120,18 +76,10 @@ class InputSimulator:
                 pyautogui.moveTo(int(ix), int(iy))
                 time.sleep(step_sleep)
 
-        pyautogui.moveTo(tx, ty)  # garante que termina exatamente no alvo
+        pyautogui.moveTo(tx, ty)
         return tx, ty
 
     def click(self, x: int, y: int, button: str = "left", jitter: int = 0) -> tuple[int, int]:
-        """Arrasta ate (x, y) (com jitter) e clica com o botao indicado.
-
-        O clique em si tambem e composto de mouseDown + espera aleatoria +
-        mouseUp, em vez de um unico evento instantaneo. Nao passamos x/y para
-        mouseDown/mouseUp: no pydirectinput isso dispararia de novo o
-        `moveTo` absoluto com bug de monitor (ver `move_to`) bem em cima da
-        posicao certa que `move_to` acabou de garantir.
-        """
         button = "right" if button == "right" else "left"
 
         if self._background_ready():
@@ -142,10 +90,8 @@ class InputSimulator:
                 return int(x), int(y)
             except Exception as exc:
                 self._background_failed(exc)
-                # cai pro codigo de mouse real abaixo, sem re-lancar
 
         tx, ty = self.move_to(x, y, jitter)
-        # Pequena pausa entre mover e clicar, como um humano faria.
         time.sleep(random.uniform(0.03, 0.12))
         try:
             self._backend.mouseDown(button=button)
@@ -156,9 +102,6 @@ class InputSimulator:
         return tx, ty
 
     def double_click(self, x: int, y: int, jitter: int = 0) -> tuple[int, int]:
-        """Clique duplo (dois `click` da esquerda em sequencia rapida) - o
-        segundo clique reaproveita a mesma posicao (sem jitter de novo) para
-        garantir que os dois caiam no mesmo alvo, como um duplo-clique real."""
         tx, ty = self.click(x, y, button="left", jitter=jitter)
         time.sleep(random.uniform(0.05, 0.12))
         self.click(tx, ty, button="left", jitter=0)
@@ -173,23 +116,6 @@ class InputSimulator:
         from_jitter: int = 0,
         to_jitter: int = 0,
     ) -> tuple[int, int]:
-        """Arrasta um item de (from_x, from_y) para (to_x, to_y).
-
-        Reaproveita `move_to` como primitivo de "mover com o botao apertado" -
-        ele nunca toca o estado do botao, entao chama-lo de novo depois do
-        mouseDown produz um arrasto com a mesma curva/easing humanizada de um
-        movimento normal, sem duplicar essa logica.
-
-        `from_jitter`/`to_jitter` sao separados (e o default e 0 pros dois):
-        slots de inventario sao pequenos (~30x34px) - o jitter usado num
-        clique de area aberta (ex: tile de agua) e grande demais aqui e
-        arrisca soltar o item fora do slot. So passe um valor pequeno
-        (poucos pixels) se quiser alguma variacao.
-
-        O mouseUp fica num `finally`: se `move_to` levantar uma excecao no
-        meio do arrasto (ex: fail-safe de canto de tela), o botao nao pode
-        ficar fisicamente preso pelo resto da sessao.
-        """
         if self._background_ready():
             try:
                 if not win32gui.IsWindow(self.background_hwnd):
@@ -198,7 +124,6 @@ class InputSimulator:
                 return int(to_x), int(to_y)
             except Exception as exc:
                 self._background_failed(exc)
-                # cai pro codigo de mouse real abaixo, sem re-lancar
 
         self.move_to(from_x, from_y, from_jitter)
         time.sleep(random.uniform(0.05, 0.15))
@@ -211,9 +136,7 @@ class InputSimulator:
             self._backend.mouseUp(button="left")
         return tx, ty
 
-    # --------------------------------------------------------------- teclado
     def press_key(self, key: str) -> None:
-        """Pressiona e solta uma tecla (ex: 'f2', 'space') com timing aleatorio."""
         key = (key or "").strip().lower()
         if not key:
             return
@@ -226,9 +149,8 @@ class InputSimulator:
                 return
             except Exception as exc:
                 self._background_failed(exc)
-                # cai pro codigo de teclado real abaixo, sem re-lancar
 
-        time.sleep(random.uniform(0.02, 0.08))  # "tempo de reacao" antes de apertar
+        time.sleep(random.uniform(0.02, 0.08))
         try:
             self._backend.keyDown(key)
             time.sleep(random.uniform(0.03, 0.09))
@@ -236,13 +158,7 @@ class InputSimulator:
         except Exception:
             pyautogui.press(key)
 
-    # ----------------------------------------------------------------- utils
     def is_using_real_mouse(self) -> bool:
-        """True se cliques desta instancia mexem o cursor real (nao esta em
-        modo background, ou o modo background ja falhou e caiu pro real) -
-        usado por quem le a tela DEPOIS de clicar pra saber se precisa
-        devolver o cursor pra nao ficar "em cima" do que acabou de clicar
-        (ex: hover mudando a cor de um elemento de UI que o codigo le)."""
         return not self._background_ready()
 
     @staticmethod
@@ -251,7 +167,6 @@ class InputSimulator:
 
     @staticmethod
     def random_delay(minimum: float, maximum: float) -> float:
-        """Sorteia um intervalo entre `minimum` e `maximum` segundos."""
         lo, hi = float(minimum), float(maximum)
         if hi < lo:
             lo, hi = hi, lo

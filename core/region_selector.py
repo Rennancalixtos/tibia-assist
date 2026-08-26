@@ -1,12 +1,3 @@
-"""Overlay em tkinter para o usuario delimitar regioes e pontos na tela.
-
-- `select_region`: o usuario arrasta um retangulo; devolve [x, y, w, h].
-- `select_point`:  o usuario clica uma vez; devolve (x, y).
-
-As coordenadas devolvidas sao absolutas (area virtual de todos os monitores),
-que e o mesmo sistema usado pelo mss e pelo pyautogui.
-"""
-
 from __future__ import annotations
 
 import tkinter as tk
@@ -15,7 +6,6 @@ from core.screen_capture import ScreenCapture
 
 
 def _virtual_geometry() -> tuple[int, int, int, int]:
-    """(left, top, width, height) da area virtual; cai para o monitor primario."""
     try:
         with ScreenCapture() as cap:
             return cap.virtual_screen_size()
@@ -27,14 +17,12 @@ def _virtual_geometry() -> tuple[int, int, int, int]:
 
 
 class _Overlay(tk.Toplevel):
-    """Janela transparente, sempre no topo, que cobre a tela inteira."""
-
     def __init__(self, master: tk.Misc, hint: str):
         super().__init__(master)
         left, top, width, height = _virtual_geometry()
         self._origin = (left, top)
 
-        self.overrideredirect(True)  # sem barra de titulo
+        self.overrideredirect(True)
         self.geometry(f"{width}x{height}+{left}+{top}")
         self.attributes("-topmost", True)
         try:
@@ -71,7 +59,6 @@ class _Overlay(tk.Toplevel):
 def select_region(
     master: tk.Misc, hint: str = "Arraste para selecionar a regiao  -  ESC cancela"
 ) -> list[int] | None:
-    """Bloqueia ate o usuario desenhar um retangulo. Devolve [x, y, w, h]."""
     overlay = _Overlay(master, hint)
     state = {"x": 0, "y": 0, "rect": None}
 
@@ -91,7 +78,7 @@ def select_region(
         x1, y1 = min(state["x"], event.x), min(state["y"], event.y)
         x2, y2 = max(state["x"], event.x), max(state["y"], event.y)
         w, h = x2 - x1, y2 - y1
-        if w < 5 or h < 5:  # clique acidental
+        if w < 5 or h < 5:
             overlay.result = None
         else:
             ax, ay = overlay.to_absolute(x1, y1)
@@ -106,7 +93,6 @@ def select_region(
 
 
 def select_point(master: tk.Misc, hint: str = "Clique no ponto desejado  -  ESC cancela") -> tuple[int, int] | None:
-    """Bloqueia ate o usuario clicar uma vez. Devolve (x, y) absolutos."""
     overlay = _Overlay(master, hint)
 
     def on_click(event):

@@ -1,16 +1,3 @@
-"""Dialogo de configuracoes (hotkeys globais + modo background).
-
-Essas duas secoes ficavam sempre visiveis no topo da janela principal, mas
-sao configuradas uma vez e raramente mexidas de novo - por isso foram
-movidas pra um dialogo separado, aberto sob demanda pelo botao
-"Configuracoes..." da barra de conta (ver `App.open_settings` em
-gui/app.py).
-
-Toda a logica (aplicar hotkeys, selecionar janela de background, testar
-clique, etc.) continua em `App` - este modulo so monta os widgets e os liga
-as variaveis/metodos que ja existem em `app`.
-"""
-
 from __future__ import annotations
 
 import tkinter as tk
@@ -20,13 +7,6 @@ from gui.widgets import HotkeyButton
 
 
 class SettingsDialog(tk.Toplevel):
-    """Dialogo modal com as secoes 'Hotkeys globais' e 'Modo background'.
-
-    Fechar o dialogo (botao Fechar, X da janela ou Esc) so esconde/destroi o
-    Toplevel - nao tem efeito colateral nenhum, ja que "Aplicar" em cada
-    secao ja salva a config na hora.
-    """
-
     def __init__(self, app) -> None:
         super().__init__(app)
         self.app = app
@@ -41,11 +21,9 @@ class SettingsDialog(tk.Toplevel):
         self.grab_set()
         self.focus_force()
 
-    # ---------------------------------------------------------------- layout
     def _build(self) -> None:
         app = self.app
 
-        # Hotkeys globais -----------------------------------------------
         top = ttk.LabelFrame(self, text="Hotkeys globais", padding=6)
         top.pack(fill="x", padx=8, pady=(8, 4))
 
@@ -61,7 +39,6 @@ class SettingsDialog(tk.Toplevel):
             row=1, column=0, columnspan=7, sticky="w", padx=4, pady=(4, 0)
         )
 
-        # Modo background (PostMessage, sem mover o mouse real) ----------
         bg = ttk.LabelFrame(self, text="Modo background", padding=6)
         bg.pack(fill="x", padx=8, pady=(0, 8))
 
@@ -87,5 +64,4 @@ class SettingsDialog(tk.Toplevel):
             row=3, column=0, columnspan=3, sticky="w", padx=4, pady=(4, 0)
         )
 
-        # Fechar -----------------------------------------------------------
         ttk.Button(self, text="Fechar", command=self.destroy).pack(anchor="e", padx=8, pady=(0, 8))

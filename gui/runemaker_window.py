@@ -1,5 +1,3 @@
-"""Aba RuneMaker: configuracao, teste de OCR/sequencia e controle da automacao."""
-
 from __future__ import annotations
 
 import os
@@ -62,10 +60,6 @@ class RuneMakerWindow(ttk.Frame):
 
         self._build()
 
-        # Dialogo de configuracao (secoes 1 a 4) - construido ja aqui (nao so
-        # no primeiro clique em "Configurar...") pra que os widgets ja
-        # existam quando `_on_mode_change`/`_update_field_states` rodam logo
-        # abaixo (ver `open_config_dialog`).
         self._config_dialog = tk.Toplevel(self)
         self._config_dialog.title("Configurar - RuneMaker")
         self._config_dialog.geometry("640x600")
@@ -78,11 +72,9 @@ class RuneMakerWindow(ttk.Frame):
 
         self._on_mode_change()
 
-    # ---------------------------------------------------------------- layout
     def _build(self) -> None:
         body = self.body
 
-        # Execucao ------------------------------------------------------------
         box_run = ttk.LabelFrame(body, text="1. Execucao")
         box_run.grid(row=0, column=0, sticky="ew", pady=4)
         self.btn_start = ttk.Button(box_run, text="Iniciar", command=self.start)
@@ -113,9 +105,7 @@ class RuneMakerWindow(ttk.Frame):
     def _hide_config_dialog(self) -> None:
         self._config_dialog.withdraw()
 
-    # ------------------------------------------------------- dialogo de config
     def _build_config_dialog(self, parent) -> None:
-        # Modo ----------------------------------------------------------------
         box_mode = ttk.LabelFrame(parent, text="1. Modo")
         box_mode.grid(row=0, column=0, sticky="ew", pady=4)
         self.radio_craft = ttk.Radiobutton(
@@ -136,7 +126,6 @@ class RuneMakerWindow(ttk.Frame):
             foreground="#a33",
         ).grid(row=1, column=0, columnspan=2, sticky="w", padx=4, pady=(0, 4))
 
-        # Magia e blank runes -------------------------------------------------
         box_spell = ttk.LabelFrame(parent, text="2. Magia e blank runes")
         box_spell.grid(row=1, column=0, sticky="ew", pady=4)
         add_hotkey_field(box_spell, 0, "Tecla da magia", self.var_spell, 10, "hotkey configurada no jogo (ex: f2)")
@@ -168,7 +157,6 @@ class RuneMakerWindow(ttk.Frame):
         self.btn_pick_output.grid(row=5, column=0, padx=4, pady=3, sticky="w")
         ttk.Label(box_spell, textvariable=self.var_output_slot).grid(row=5, column=1, columnspan=2, sticky="w")
 
-        # Deteccao de slot vazio -----------------------------------------------
         box_slots = ttk.LabelFrame(parent, text="2.1 Deteccao de slot vazio (template)")
         box_slots.grid(row=2, column=0, sticky="ew", pady=4)
         self.btn_capture_blank_empty = ttk.Button(
@@ -205,7 +193,6 @@ class RuneMakerWindow(ttk.Frame):
         self.btn_test_sequence = ttk.Button(actions_slots, text="Testar sequencia", command=self.test_sequence)
         self.btn_test_sequence.pack(side="left", padx=8)
 
-        # OCR ---------------------------------------------------------------
         box_ocr = ttk.LabelFrame(parent, text="3. Limites de seguranca (OCR)")
         box_ocr.grid(row=3, column=0, sticky="ew", pady=4)
 
@@ -233,14 +220,12 @@ class RuneMakerWindow(ttk.Frame):
             foreground="#666",
         ).grid(row=4, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 4))
 
-        # Ritmo -------------------------------------------------------------
         box_rate = ttk.LabelFrame(parent, text="4. Ritmo")
         box_rate.grid(row=4, column=0, sticky="ew", pady=4)
         add_field(box_rate, 0, "Delay minimo (s)", self.var_delay_min, 8, ">= cooldown real da magia")
         add_field(box_rate, 1, "Delay maximo (s)", self.var_delay_max, 8, "ex: 2.5")
         add_field(box_rate, 2, "Variacao do clique (px)", self.var_jitter, 8, "+/- pixels")
 
-        # Salvar / Fechar -------------------------------------------------------
         actions_bar = ttk.Frame(parent)
         actions_bar.grid(row=5, column=0, sticky="e", pady=(8, 4))
         ttk.Button(actions_bar, text="Salvar config", command=self.save_config).pack(side="left", padx=4)
@@ -248,7 +233,6 @@ class RuneMakerWindow(ttk.Frame):
 
         parent.columnconfigure(0, weight=1)
 
-    # ------------------------------------------------------------ modo/estado
     def _on_no_hand_toggle(self) -> None:
         self._update_field_states()
 
@@ -258,9 +242,6 @@ class RuneMakerWindow(ttk.Frame):
         self._update_field_states()
 
     def _update_field_states(self) -> None:
-        """So a tecla da magia (usada por todos os modos) e as secoes 3/4/5
-        continuam sempre ativas. O resto depende do modo escolhido e do
-        checkbox "sem mao"."""
         mana_training = self.var_mode.get() == "ManaTraining"
         item_state = "disabled" if mana_training else "normal"
 
@@ -279,7 +260,6 @@ class RuneMakerWindow(ttk.Frame):
         for widget in (self.btn_pick_hand, self.btn_pick_output, self.btn_capture_hand_empty, self.btn_capture_output_empty):
             widget.configure(state=hand_state)
 
-    # --------------------------------------------------------------- selecao
     def pick_slot(self) -> None:
         point = self.app.select_point("Clique no slot da BLANK RUNE  -  ESC cancela")
         if point:
@@ -328,8 +308,6 @@ class RuneMakerWindow(ttk.Frame):
         self.log(f"Ponto de exibicao da mana definido: {region_text(point)}")
 
     def _capture_empty_template(self, slot_key: str, label: str, region_var: tk.StringVar) -> None:
-        """Recorta o slot VAZIO como referencia pra deteccao por template
-        (mesmo padrao do "Capturar template" do AutoFishing)."""
         region = self.app.select_region(f"Selecione o slot {label} VAZIO  -  ESC cancela")
         if not region:
             return
@@ -345,7 +323,6 @@ class RuneMakerWindow(ttk.Frame):
         self.log(f"Template de slot vazio ({label}) salvo em {path} ({region[2]}x{region[3]} px)")
 
     def test_ocr(self) -> None:
-        """Le a mana uma unica vez e mostra o que o Tesseract entendeu."""
         self.save_config()
         configure_tesseract(on_progress=self.log)
 
@@ -364,9 +341,6 @@ class RuneMakerWindow(ttk.Frame):
         messagebox.showinfo("RuneMaker", message)
 
     def test_sequence(self) -> None:
-        """Roda um ciclo unico de criacao (dry-run ou real) - reaproveita
-        exatamente a mesma logica do worker (`_craft_cycle`/`_simple_craft_cycle`)
-        pra nao ter dois caminhos de codigo divergentes."""
         self.save_config()
         if self.cfg.get("mode") == "mana_training":
             messagebox.showinfo("RuneMaker", "Testar sequencia so se aplica ao modo 'Criar runas'.")
@@ -395,7 +369,6 @@ class RuneMakerWindow(ttk.Frame):
         message = "Sequencia de teste concluida (ver log)." if ok else "Sequencia de teste falhou em alguma validacao (ver log)."
         messagebox.showinfo("RuneMaker", message)
 
-    # -------------------------------------------------------------- controles
     def save_config(self) -> None:
         self.cfg["spell_hotkey"] = self.var_spell.get().strip().lower()
         self.cfg["amount"] = parse_int(self.var_amount.get(), 0)
@@ -432,7 +405,6 @@ class RuneMakerWindow(ttk.Frame):
     def stop(self) -> None:
         self.app.stop_worker(self.worker_key)
 
-    # ------------------------------------------------------------- callbacks
     def log(self, message: str) -> None:
         self.app.log(message, source=self.worker_key)
 
