@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import difflib
-from dataclasses import dataclass
 
 import cv2
 import numpy as np
@@ -30,15 +29,6 @@ def preprocess_name_for_ocr(frame: np.ndarray) -> np.ndarray:
     return binary
 
 
-@dataclass
-class BattleListRow:
-    index: int
-    occupied: bool
-    name: str | None = None
-    selection: str = "none"
-    life_pct: int | None = None
-
-
 def read_name(frame: np.ndarray) -> str:
     if pytesseract is None:
         raise OCRUnavailable(
@@ -50,40 +40,6 @@ def read_name(frame: np.ndarray) -> str:
     except Exception as exc:
         raise OCRUnavailable(f"Falha ao executar o Tesseract: {exc}") from exc
     return " ".join(text.split())
-
-
-def row_region(battle_list_region, row_height: int, index: int) -> list[int]:
-    x, y, w, _h = battle_list_region
-    return [int(x), int(y + index * row_height), int(w), int(row_height)]
-
-
-def row_count_for(battle_list_region, row_height: int) -> int:
-    if not battle_list_region or not row_height:
-        return 0
-    return max(0, int(battle_list_region[3]) // int(row_height))
-
-
-def crop_offset(frame: np.ndarray, offset) -> np.ndarray | None:
-    if not offset:
-        return None
-    dx, dy, w, h = (int(v) for v in offset)
-    fh, fw = frame.shape[:2]
-    x0, y0 = max(0, dx), max(0, dy)
-    x1, y1 = min(fw, dx + w), min(fh, dy + h)
-    if x1 <= x0 or y1 <= y0:
-        return None
-    return frame[y0:y1, x0:x1]
-
-
-def row_is_empty(frame_row: np.ndarray, empty_template: np.ndarray | None, threshold: float = 0.90) -> bool | None:
-    if empty_template is None or frame_row.size == 0:
-        return None
-    template = empty_template
-    if frame_row.shape[:2] != template.shape[:2]:
-        template = cv2.resize(template, (frame_row.shape[1], frame_row.shape[0]))
-    result = cv2.matchTemplate(frame_row, template, cv2.TM_CCOEFF_NORMED)
-    result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
-    return float(result.max()) >= threshold
 
 
 def battle_list_empty_score(frame: np.ndarray, template: np.ndarray | None) -> float | None:
@@ -123,77 +79,12 @@ def attack_color_present(
     return int(np.count_nonzero(mask)) >= min_pixels
 
 
-def _text_foreground_mask(crop: np.ndarray, brightness_cutoff: int = 100) -> np.ndarray:
-    return np.max(crop, axis=2) > brightness_cutoff
-
-
-def sample_name_text_color(frame: np.ndarray, tolerance: tuple[int, int, int] = (10, 60, 60)):
-    mask = _text_foreground_mask(frame)
-    pixels = frame[mask] if np.any(mask) else frame.reshape(-1, 3)
-    hsv_pixels = cv2.cvtColor(pixels.reshape(-1, 1, 3), cv2.COLOR_BGR2HSV).reshape(-1, 3)
-    median = np.median(hsv_pixels, axis=0)
-    th, ts, tv = tolerance
-    lower = [
-        int(max(0, median[0] - th)),
-        int(max(0, median[1] - ts)),
-        int(max(0, median[2] - tv)),
-    ]
-    upper = [
-        int(min(179, median[0] + th)),
-        int(min(255, median[1] + ts)),
-        int(min(255, median[2] + tv)),
-    ]
-    return lower, upper
-
-
-def classify_name_color(
-    crop: np.ndarray | None,
-    attack_ranges: list[tuple[list[int], list[int]]] | None,
-    follow_ranges: list[tuple[list[int], list[int]]] | None,
-    min_coverage: float = 0.15,
-) -> str:
-    if crop is None or crop.size == 0:
-        return "none"
-    mask = _text_foreground_mask(crop)
-    total_fg = int(np.count_nonzero(mask))
-    if total_fg == 0:
-        return "none"
-    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-
-    def coverage(hsv_ranges) -> float:
-        if not hsv_ranges:
-            return 0.0
-        best = 0.0
-        for lower, upper in hsv_ranges:
-            color_mask = cv2.inRange(hsv, np.array(lower, dtype=np.uint8), np.array(upper, dtype=np.uint8))
-            cov = int(np.count_nonzero((color_mask > 0) & mask)) / total_fg
-            best = max(best, cov)
-        return best
-
-    red_cov = coverage(attack_ranges)
-    green_cov = coverage(follow_ranges)
-    if red_cov >= min_coverage and red_cov >= green_cov:
-        return "attack"
-    if green_cov >= min_coverage:
-        return "follow"
-    return "none"
-
-
 def normalize_name(name: str | None) -> str:
     return " ".join((name or "").strip().split()).lower()
 
 
 def name_similarity(a: str, b: str) -> float:
     return difflib.SequenceMatcher(None, a, b).ratio()
-
-
-def name_passes_filter(name: str | None, creature_list: list[str], mode: str, threshold: float = 0.80) -> bool:
-    norm_name = normalize_name(name)
-    if not norm_name:
-        return False
-    norm_list = [normalize_name(n) for n in creature_list if normalize_name(n)]
-    matched = any(name_similarity(norm_name, entry) >= threshold for entry in norm_list)
-    return matched if mode == "whitelist" else not matched
 
 
 class TargetWorker(BaseWorker):

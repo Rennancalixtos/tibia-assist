@@ -5,16 +5,33 @@ import time
 from core.input_simulator import InputSimulator
 from core.screen_capture import ScreenCapture, is_valid_region, load_image
 from core.worker import BaseWorker
-from functions.rune_maker import OCRUnavailable, configure_tesseract, read_number, slot_is_empty
+from functions.rune_maker import OCRUnavailable, configure_tesseract, read_number
 from functions.target import (
-    BattleListRow,
-    classify_name_color,
-    crop_offset,
-    name_passes_filter,
+    attack_color_present,
+    battle_list_empty_score,
+    name_similarity,
+    normalize_name,
     read_name,
-    row_count_for,
-    row_is_empty,
 )
+
+
+def creature_name_present(ocr_text: str, creature_name: str, threshold: float) -> bool:
+    normalized_text = normalize_name(ocr_text)
+    normalized_name = normalize_name(creature_name)
+    if not normalized_name or not normalized_text:
+        return False
+    if normalized_name in normalized_text:
+        return True
+    text_words = normalized_text.split()
+    name_words = normalized_name.split()
+    window = len(name_words)
+    if window == 0 or len(text_words) < window:
+        return name_similarity(normalized_text, normalized_name) >= threshold
+    best = 0.0
+    for i in range(len(text_words) - window + 1):
+        candidate = " ".join(text_words[i:i + window])
+        best = max(best, name_similarity(candidate, normalized_name))
+    return best >= threshold
 
 
 class TrainingWorker(BaseWorker):
@@ -28,27 +45,58 @@ class TrainingWorker(BaseWorker):
         )
         self.register_with_coordinator("training")
 
-        self.mode = self.config.get("mode", "battle_list")
-        self._last_warning = ""
-        self._session_started_at = time.monotonic()
-        self._last_elapsed_emit = 0.0
+        self.battle_list_region = self.config.get("battle_list_region")
+        if not is_valid_region(self.battle_list_region):
+            raise ValueError("Regiao da Battle List nao configurada.")
 
-        self.break_enabled = bool(self.config.get("break_enabled", True))
-        self._schedule_next_break()
+        self.empty_template = self._load_template("training_battle_empty_template")
+        if self.empty_template is None:
+            raise ValueError("Modelo de lista vazia nao calibrado.")
+        self.empty_threshold = float(self.config.get("empty_match_threshold", 0.85))
+
+        rgb = self.config.get("attack_color_rgb") or [254, 0, 0]
+        self.attack_rgb = (int(rgb[0]), int(rgb[1]), int(rgb[2]))
+        self.attack_tolerance = int(self.config.get("attack_color_tolerance", 6))
+        self.attack_min_pixels = int(self.config.get("attack_color_min_pixels", 3))
+
+        self.attack_key = (self.config.get("attack_key") or "space").strip().lower()
+        if not self.attack_key:
+            raise ValueError("Tecla de ataque nao configurada.")
+        self.attack_check_delay = float(self.config.get("attack_check_delay", 0.5))
+
+        self.creature_name = (self.config.get("creature_name") or "").strip()
+        if not self.creature_name:
+            raise ValueError("Nome do monstro de treino nao configurado.")
+        self.name_match_threshold = float(self.config.get("name_match_threshold", 0.80))
+
+        self.missing_retries = max(1, int(self.config.get("missing_retries", 5)))
+        self.missing_retry_interval = float(self.config.get("missing_retry_interval", 2.0))
+        self._missing_count = 0
+
+        self.cast_spell_enabled = bool(self.config.get("cast_spell_enabled", False))
+        self._next_spell_at = 0.0
+        if self.cast_spell_enabled:
+            self.spell_hotkey = (self.config.get("spell_hotkey") or "").strip()
+            if not self.spell_hotkey:
+                raise ValueError("Tecla de atalho da magia de ataque nao configurada.")
+            self.check_mana = bool(self.config.get("check_mana", True))
+            if self.check_mana and not is_valid_region(self.config.get("mana_region")):
+                raise ValueError("Regiao de OCR da mana (magia de ataque) nao configurada.")
 
         self.anti_afk_enabled = bool(self.config.get("anti_afk_enabled", False))
         self.anti_afk_interval = float(self.config.get("anti_afk_interval_minutes", 10) or 10) * 60
         self._next_anti_afk_at = time.monotonic() + self.anti_afk_interval
 
-        if self.mode == "dummy":
-            self._setup_dummy_mode()
-        else:
-            self._setup_battle_list_mode()
+        self._last_warning = ""
+        self._session_started_at = time.monotonic()
+        self._last_elapsed_emit = 0.0
 
         configure_tesseract(on_progress=self.log)
 
-        mode_label = "boneco de treino" if self.mode == "dummy" else "monstro de treino (Battle List)"
-        self.log(f"Training iniciado (modo={mode_label}, backend={InputSimulator.backend_name()}).")
+        self.log(
+            f"Training iniciado (alvo='{self.creature_name}', tecla de ataque='{self.attack_key}', "
+            f"backend={InputSimulator.backend_name()})."
+        )
 
     def teardown(self) -> None:
         capture = getattr(self, "capture", None)
@@ -67,35 +115,10 @@ class TrainingWorker(BaseWorker):
         except Exception:
             return None
 
-    def _hsv_range(self, lower_key: str, upper_key: str):
-        lower = self.config.get(lower_key)
-        upper = self.config.get(upper_key)
-        if not lower or not upper:
-            return None
-        return (lower, upper)
-
     def warn_once(self, message: str) -> None:
         if message != self._last_warning:
             self.log(message)
             self._last_warning = message
-
-    def _schedule_next_break(self) -> None:
-        interval = InputSimulator.random_delay(
-            self.config.get("break_interval_min", 30), self.config.get("break_interval_max", 300)
-        )
-        self._next_break_at = time.monotonic() + interval
-
-    def maybe_take_break(self) -> bool:
-        if not self.break_enabled or time.monotonic() < self._next_break_at:
-            return True
-        duration = InputSimulator.random_delay(
-            self.config.get("break_duration_min", 10), self.config.get("break_duration_max", 120)
-        )
-        self.log(f"Pausa para descanso: {duration:.0f}s.")
-        if not self.sleep(duration):
-            return False
-        self._schedule_next_break()
-        return True
 
     def maybe_send_anti_afk(self) -> None:
         if not self.anti_afk_enabled or time.monotonic() < self._next_anti_afk_at:
@@ -126,131 +149,43 @@ class TrainingWorker(BaseWorker):
         self._last_elapsed_emit = now
         self.emit("elapsed", self._format_elapsed(now - self._session_started_at))
 
-    def loop(self) -> None:
-        if self.mode == "dummy":
-            self._dummy_loop()
-        else:
-            self._battle_list_loop()
+    def battle_list_empty_score(self) -> float | None:
+        frame = self.capture.grab(self.battle_list_region)
+        return battle_list_empty_score(frame, self.empty_template)
 
-    def _setup_battle_list_mode(self) -> None:
-        self.battle_list_region = self.config.get("battle_list_region")
-        if not is_valid_region(self.battle_list_region):
-            raise ValueError("Regiao da Battle List nao configurada.")
-
-        self.row_height = int(self.config.get("row_height") or 0)
-        if self.row_height <= 0:
-            raise ValueError("Altura de linha nao calibrada.")
-
-        self.row_count = row_count_for(self.battle_list_region, self.row_height)
-        if self.row_count <= 0:
-            raise ValueError("Regiao da Battle List menor que uma linha - recalibre.")
-
-        self.empty_template = self._load_template("row_empty_template")
-        if self.empty_template is None:
-            raise ValueError("Template de linha vazia nao calibrado.")
-        self.empty_threshold = float(self.config.get("empty_match_threshold", 0.90))
-
-        self.name_crop_offset = self.config.get("name_crop_offset")
-        if not self.name_crop_offset:
-            self.log(
-                "AVISO: faixa de texto do nome nao calibrada - o alvo de "
-                "treino nao vai ser reconhecido na lista."
+    def is_battle_list_empty(self) -> bool:
+        score = self.battle_list_empty_score()
+        if score is None:
+            self.warn_once(
+                "AVISO: modelo de lista vazia maior que a regiao configurada - "
+                "recalibre a regiao da Battle List ou o modelo."
             )
+            return False
+        return score >= self.empty_threshold
 
-        self.attack_ranges = [r for r in (
-            self._hsv_range("attack_name_hsv_lower", "attack_name_hsv_upper"),
-            self._hsv_range("attack_hover_name_hsv_lower", "attack_hover_name_hsv_upper"),
-        ) if r]
-        self.follow_ranges = [r for r in (
-            self._hsv_range("follow_name_hsv_lower", "follow_name_hsv_upper"),
-            self._hsv_range("follow_hover_name_hsv_lower", "follow_hover_name_hsv_upper"),
-        ) if r]
+    def is_attacking(self) -> bool:
+        frame = self.capture.grab(self.battle_list_region)
+        return attack_color_present(frame, self.attack_rgb, self.attack_tolerance, self.attack_min_pixels)
 
-        self.attack_mode = self.config.get("attack_mode", "single_click")
-        self.context_menu_offset = self.config.get("context_menu_offset") or [0, 0]
+    def read_battle_list_text(self) -> str:
+        frame = self.capture.grab(self.battle_list_region)
+        try:
+            return read_name(frame)
+        except OCRUnavailable as exc:
+            self.warn_once(f"OCR indisponivel: {exc}")
+            return ""
 
-        self.creature_name = (self.config.get("creature_name") or "").strip()
-        if not self.creature_name:
-            raise ValueError("Nome do monstro/boneco de treino (Modo A) nao configurado.")
-        self.name_match_threshold = float(self.config.get("name_match_threshold", 0.80))
+    def creature_present(self) -> bool:
+        if self.is_battle_list_empty():
+            return False
+        text = self.read_battle_list_text()
+        return creature_name_present(text, self.creature_name, self.name_match_threshold)
 
-        self.missing_retries = max(1, int(self.config.get("missing_retries", 5)))
-        self.missing_retry_interval = float(self.config.get("missing_retry_interval", 2.0))
-        self._missing_count = 0
-
-        self.cast_spell_enabled = bool(self.config.get("cast_spell_enabled", False))
-        self._next_spell_at = 0.0
-        if self.cast_spell_enabled:
-            self.spell_hotkey = (self.config.get("spell_hotkey") or "").strip()
-            if not self.spell_hotkey:
-                raise ValueError("Tecla de atalho da magia de ataque nao configurada.")
-            self.check_mana = bool(self.config.get("check_mana", True))
-            if self.check_mana and not is_valid_region(self.config.get("mana_region")):
-                raise ValueError("Regiao de OCR da mana (magia de ataque) nao configurada.")
-
-    def read_rows(self, frame) -> list[BattleListRow]:
-        rows: list[BattleListRow] = []
-        for i in range(self.row_count):
-            y0 = i * self.row_height
-            y1 = y0 + self.row_height
-            row_frame = frame[y0:y1, :]
-            if row_frame.size == 0:
-                continue
-
-            empty = row_is_empty(row_frame, self.empty_template, self.empty_threshold)
-            if empty:
-                rows.append(BattleListRow(index=i, occupied=False))
-                continue
-
-            name = None
-            selection = "none"
-            if self.name_crop_offset:
-                crop = crop_offset(row_frame, self.name_crop_offset)
-                if crop is not None and crop.size > 0:
-                    try:
-                        name = read_name(crop)
-                    except OCRUnavailable as exc:
-                        self.warn_once(f"OCR indisponivel: {exc}")
-                    selection = classify_name_color(crop, self.attack_ranges, self.follow_ranges)
-
-            rows.append(BattleListRow(index=i, occupied=True, name=name, selection=selection))
-        return rows
-
-    def find_trained_creature(self, occupied_rows: list[BattleListRow]) -> BattleListRow | None:
-        for row in occupied_rows:
-            if name_passes_filter(row.name, [self.creature_name], "whitelist", self.name_match_threshold):
-                return row
-        return None
-
-    def _row_center(self, index: int) -> tuple[int, int]:
-        x, y, w, _h = self.battle_list_region
-        cy = int(y + index * self.row_height + self.row_height / 2)
-        cx = int(x + w / 2)
-        return cx, cy
-
-    def select_creature(self, index: int, dry_run: bool = False) -> None:
-        cx, cy = self._row_center(index)
-        jitter = int(self.config.get("click_jitter", 2))
-
+    def press_attack_key(self, dry_run: bool = False) -> None:
         if dry_run:
-            self.log(f"[dry-run] acao de selecao ({self.attack_mode}) na linha {index} em ({cx}, {cy})")
+            self.log(f"[dry-run] pressionaria a tecla de ataque '{self.attack_key}'")
             return
-
-        using_real_mouse = self.mouse.is_using_real_mouse()
-        origin = InputSimulator.current_position() if using_real_mouse else None
-
-        if self.attack_mode == "double_click":
-            self.mouse.double_click(cx, cy, jitter=jitter)
-        elif self.attack_mode == "context_menu":
-            self.mouse.click(cx, cy, button="right", jitter=jitter)
-            time.sleep(InputSimulator.random_delay(0.15, 0.35))
-            dx, dy = self.context_menu_offset
-            self.mouse.click(cx + int(dx), cy + int(dy), button="left", jitter=0)
-        else:
-            self.mouse.click(cx, cy, button="left", jitter=jitter)
-
-        if origin is not None:
-            self.mouse.move_to(*origin)
+        self.mouse.press_key(self.attack_key)
 
     def _read_mana(self) -> int | None:
         frame = self.capture.grab(self.config.get("mana_region"))
@@ -284,21 +219,14 @@ class TrainingWorker(BaseWorker):
             self.config.get("spell_delay_min", 1.5), self.config.get("spell_delay_max", 2.5)
         )
 
-    def _battle_list_loop(self) -> None:
+    def loop(self) -> None:
         while not self.stopped:
             if not self.wait_for_higher_priority():
-                return
-            if not self.maybe_take_break():
                 return
             self.maybe_send_anti_afk()
             self._emit_elapsed()
 
-            frame = self.capture.grab(self.battle_list_region)
-            rows = self.read_rows(frame)
-            occupied_rows = [r for r in rows if r.occupied]
-            target_row = self.find_trained_creature(occupied_rows)
-
-            if target_row is None:
+            if not self.creature_present():
                 self._missing_count += 1
                 if self._missing_count == 1:
                     self.log(f"Alvo de treino '{self.creature_name}' nao encontrado na lista - tentando de novo...")
@@ -314,93 +242,40 @@ class TrainingWorker(BaseWorker):
 
             self._missing_count = 0
 
-            if target_row.selection == "none":
+            if not self.is_attacking():
                 if not self.request_floor(timeout=5.0):
                     if not self.sleep(1.0):
                         return
                     continue
                 try:
-                    self.select_creature(target_row.index)
+                    self.press_attack_key()
                 finally:
                     self.release_floor()
+
+                if not self.sleep(self.attack_check_delay):
+                    return
+                attacking = self.is_attacking()
                 self.bump_counter()
                 self.log(
-                    f"Alvo de treino '{target_row.name or self.creature_name}' selecionado "
-                    f"(linha {target_row.index})."
+                    f"Ataque #{self.counter}: tecla '{self.attack_key}' pressionada - "
+                    f"atacando={'sim' if attacking else 'nao confirmado'}."
                 )
 
             if self.cast_spell_enabled:
                 self._maybe_cast_spell()
 
-            if not self.sleep(InputSimulator.random_delay(
-                self.config.get("delay_min", 0.6), self.config.get("delay_max", 1.4)
-            )):
-                return
-
-    def _setup_dummy_mode(self) -> None:
-        self.dummy_position = self.config.get("dummy_position")
-        if not (isinstance(self.dummy_position, (list, tuple)) and len(self.dummy_position) == 2):
-            raise ValueError("Posicao do boneco de treino nao configurada.")
-
-        self.weapon_slot_region = self.config.get("weapon_slot_region")
-        self.weapon_template = self._load_template("weapon_equipped_template")
-        if not is_valid_region(self.weapon_slot_region) or self.weapon_template is None:
-            self.log(
-                "AVISO: slot da arma de treino nao calibrado - deplecao da "
-                "arma nao vai ser detectada."
-            )
-        self.weapon_match_threshold = float(self.config.get("weapon_match_threshold", 0.90))
-        self.click_jitter = int(self.config.get("click_jitter", 2))
-
-        self._next_dummy_click_at = 0.0
-
-    def _weapon_still_equipped(self) -> bool | None:
-        if self.weapon_template is None or not is_valid_region(self.weapon_slot_region):
-            return None
-        frame = self.capture.grab(self.weapon_slot_region)
-        return slot_is_empty(frame, self.weapon_template, self.weapon_match_threshold)
-
-    def _schedule_next_dummy_click(self) -> None:
-        interval = InputSimulator.random_delay(
-            self.config.get("click_interval_min", 2.0), self.config.get("click_interval_max", 4.0)
-        )
-        self._next_dummy_click_at = time.monotonic() + interval
-
-    def click_dummy(self, dry_run: bool = False) -> None:
-        x, y = int(self.dummy_position[0]), int(self.dummy_position[1])
-        if dry_run:
-            self.log(f"[dry-run] clicaria no boneco de treino ({x}, {y})")
-            return
-        self.mouse.click(x, y, button="left", jitter=self.click_jitter)
-
-    def _dummy_loop(self) -> None:
-        self._schedule_next_dummy_click()
-        while not self.stopped:
-            if not self.wait_for_higher_priority():
-                return
-            if not self.maybe_take_break():
-                return
-            self.maybe_send_anti_afk()
-            self._emit_elapsed()
-
-            still_equipped = self._weapon_still_equipped()
-            if still_equipped is False:
-                self.log("Arma de treino esgotada - reponha e reative.")
-                self.warn_popup("Arma de treino esgotada - reponha e reative.")
-                self.pause()
-                continue
-
-            if time.monotonic() >= self._next_dummy_click_at:
-                if not self.request_floor(timeout=5.0):
-                    if not self.sleep(1.0):
-                        return
-                    continue
-                try:
-                    self.click_dummy()
-                finally:
-                    self.release_floor()
-                self.bump_counter()
-                self._schedule_next_dummy_click()
-
-            if not self.sleep(0.5):
-                return
+            while not self.stopped:
+                if not self.wait_for_higher_priority():
+                    return
+                if not self.sleep(InputSimulator.random_delay(
+                    self.config.get("engaged_delay_min", 1.0), self.config.get("engaged_delay_max", 2.0)
+                )):
+                    return
+                self.maybe_send_anti_afk()
+                self._emit_elapsed()
+                if not self.creature_present():
+                    break
+                if self.cast_spell_enabled:
+                    self._maybe_cast_spell()
+                if not self.is_attacking():
+                    break
