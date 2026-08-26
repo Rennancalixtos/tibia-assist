@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import os
 import tkinter as tk
 from tkinter import messagebox, ttk
@@ -23,6 +24,28 @@ FILTER_MODE_LABELS = {
     "blacklist": "Atacar todos, exceto estes",
 }
 FILTER_MODE_VALUES = {label: value for value, label in FILTER_MODE_LABELS.items()}
+
+# Campos de calibracao da Battle List compartilhados entre Target e Training
+# (mesmo formato nas duas abas, ver core/config.py) - usado por
+# `import_calibration_from` pra copiar de uma aba pra outra sem recalibrar
+# tudo de novo quando as duas leem a MESMA Battle List na tela.
+BATTLE_LIST_CALIBRATION_KEYS = [
+    "battle_list_region",
+    "row_height",
+    "row_empty_template",
+    "empty_match_threshold",
+    "name_crop_offset",
+    "attack_name_hsv_lower",
+    "attack_name_hsv_upper",
+    "attack_hover_name_hsv_lower",
+    "attack_hover_name_hsv_upper",
+    "follow_name_hsv_lower",
+    "follow_name_hsv_upper",
+    "follow_hover_name_hsv_lower",
+    "follow_hover_name_hsv_upper",
+    "attack_mode",
+    "context_menu_offset",
+]
 
 
 def offset_text(offset) -> str:
@@ -156,25 +179,29 @@ class TargetWindow(ttk.Frame):
         ttk.Button(
             box_list, text="Calibracao guiada (todos os passos abaixo, em sequencia)...",
             command=self.calibrate_all,
-        ).grid(row=0, column=0, columnspan=2, padx=4, pady=(6, 10), sticky="w")
+        ).grid(row=0, column=0, columnspan=2, padx=4, pady=(6, 4), sticky="w")
+        ttk.Button(
+            box_list, text="Importar calibracao do Training...",
+            command=lambda: self.import_calibration_from("training"),
+        ).grid(row=1, column=0, columnspan=2, padx=4, pady=(0, 10), sticky="w")
 
         ttk.Button(box_list, text="Selecionar regiao da Battle List...", command=self.pick_battle_list_region).grid(
-            row=1, column=0, padx=4, pady=6, sticky="w"
-        )
-        ttk.Label(box_list, textvariable=self.var_region).grid(row=1, column=1, sticky="w")
-
-        ttk.Button(box_list, text="Calibrar altura de linha...", command=self.calibrate_row_height).grid(
             row=2, column=0, padx=4, pady=6, sticky="w"
         )
-        ttk.Label(box_list, textvariable=self.var_row_height).grid(row=2, column=1, sticky="w")
+        ttk.Label(box_list, textvariable=self.var_region).grid(row=2, column=1, sticky="w")
+
+        ttk.Button(box_list, text="Calibrar altura de linha...", command=self.calibrate_row_height).grid(
+            row=3, column=0, padx=4, pady=6, sticky="w"
+        )
+        ttk.Label(box_list, textvariable=self.var_row_height).grid(row=3, column=1, sticky="w")
 
         ttk.Button(
             box_list, text="Capturar linha vazia (template)...", command=self.capture_row_empty_template
-        ).grid(row=3, column=0, padx=4, pady=6, sticky="w")
-        ttk.Label(box_list, textvariable=self.var_empty_template).grid(row=3, column=1, sticky="w")
+        ).grid(row=4, column=0, padx=4, pady=6, sticky="w")
+        ttk.Label(box_list, textvariable=self.var_empty_template).grid(row=4, column=1, sticky="w")
 
         self.entry_empty_threshold = add_field(
-            box_list, 4, "Cobertura minima do slot vazio (%)", self.var_empty_threshold, 8, "0 a 100 (padrao 90)"
+            box_list, 5, "Cobertura minima do slot vazio (%)", self.var_empty_threshold, 8, "0 a 100 (padrao 90)"
         )
 
         # Nome (OCR) ----------------------------------------------------------
@@ -316,6 +343,46 @@ class TargetWindow(ttk.Frame):
         row_index = max(0, int((ry - by) // row_height))
         row_top = by + row_index * row_height
         return [rx - bx, ry - row_top, rw, rh]
+
+    def import_calibration_from(self, source_key: str) -> None:
+        """Copia a calibracao de Battle List (regiao, altura, template de
+        linha vazia, faixa/cores do nome, forma de ataque) de outra aba com
+        o mesmo formato de config (`BATTLE_LIST_CALIBRATION_KEYS`) - evita
+        recalibrar tudo de novo quando as duas abas leem a MESMA Battle List
+        na tela. So copia campos que a origem ja tem preenchidos."""
+        source_cfg = self.app.config_store.section(source_key)
+        imported = 0
+        for key in BATTLE_LIST_CALIBRATION_KEYS:
+            value = source_cfg.get(key)
+            if value not in (None, "", [], {}):
+                self.cfg[key] = copy.deepcopy(value)
+                imported += 1
+        if imported == 0:
+            messagebox.showwarning("Target", f"A aba '{source_key}' ainda nao tem nada calibrado.")
+            return
+        self._refresh_calibration_vars()
+        self.app.config_store.save()
+        self.log(f"Calibracao importada de '{source_key}' ({imported} campo(s)).")
+        messagebox.showinfo(
+            "Target", f"Calibracao importada de '{source_key}'! Confira com 'Testar leitura da Battle List'."
+        )
+
+    def _refresh_calibration_vars(self) -> None:
+        """Atualiza os StringVars da tela com os valores atuais de `self.cfg`
+        - usado depois de uma importacao (os campos mudam sem passar pelos
+        metodos de calibracao normais, que ja atualizam a var na hora)."""
+        self.var_region.set(region_text(self.cfg.get("battle_list_region")))
+        row_height = self.cfg.get("row_height")
+        self.var_row_height.set(f"{row_height}px" if row_height else "nao calibrado")
+        self.var_empty_template.set("Template calibrado" if self.cfg.get("row_empty_template") else "nao calibrado")
+        self.var_empty_threshold.set(str(int(float(self.cfg.get("empty_match_threshold", 0.90)) * 100)))
+        self.var_name_offset.set(offset_text(self.cfg.get("name_crop_offset")))
+        self.var_name_color_status.set(self._name_color_status_text())
+        self.var_attack_mode.set(
+            ATTACK_MODE_LABELS.get(self.cfg.get("attack_mode", "single_click"), "Clique simples")
+        )
+        self.var_menu_offset.set(offset_text(self.cfg.get("context_menu_offset")))
+        self._on_attack_mode_change()
 
     def calibrate_all(self) -> None:
         """Encadeia os 4 passos de calibracao BLOQUEANTES em sequencia

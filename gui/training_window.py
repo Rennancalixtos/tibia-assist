@@ -8,6 +8,7 @@ os campos relevantes de cada um, em vez de duas telas separadas).
 
 from __future__ import annotations
 
+import copy
 import os
 import tkinter as tk
 from tkinter import messagebox, ttk
@@ -17,7 +18,7 @@ from core.screen_capture import ScreenCapture, is_valid_region, save_image
 from functions.rune_maker import OCRUnavailable, configure_tesseract, read_number
 from functions.target import crop_offset, row_is_empty, sample_name_text_color
 from functions.training import TrainingWorker
-from gui.target_window import ATTACK_MODE_LABELS, ATTACK_MODE_VALUES, offset_text
+from gui.target_window import ATTACK_MODE_LABELS, ATTACK_MODE_VALUES, BATTLE_LIST_CALIBRATION_KEYS, offset_text
 from gui.widgets import ScrollableFrame, add_field, add_hotkey_field, parse_float, parse_int, region_text
 
 MODE_LABELS = {
@@ -191,58 +192,63 @@ class TrainingWindow(ttk.Frame):
             self.box_battle_list, text="Calibracao guiada (todos os passos abaixo, em sequencia)...",
             command=self.calibrate_all,
         )
-        self.btn_calibrate_all.grid(row=0, column=0, columnspan=2, padx=4, pady=(6, 10), sticky="w")
+        self.btn_calibrate_all.grid(row=0, column=0, columnspan=2, padx=4, pady=(6, 4), sticky="w")
+        self.btn_import_calibration = ttk.Button(
+            self.box_battle_list, text="Importar calibracao do Target...",
+            command=lambda: self.import_calibration_from("target"),
+        )
+        self.btn_import_calibration.grid(row=1, column=0, columnspan=2, padx=4, pady=(0, 10), sticky="w")
 
         self.btn_pick_region = ttk.Button(
             self.box_battle_list, text="Selecionar regiao da Battle List...", command=self.pick_battle_list_region
         )
-        self.btn_pick_region.grid(row=1, column=0, padx=4, pady=6, sticky="w")
-        ttk.Label(self.box_battle_list, textvariable=self.var_region).grid(row=1, column=1, sticky="w")
+        self.btn_pick_region.grid(row=2, column=0, padx=4, pady=6, sticky="w")
+        ttk.Label(self.box_battle_list, textvariable=self.var_region).grid(row=2, column=1, sticky="w")
 
         self.btn_calibrate_row = ttk.Button(
             self.box_battle_list, text="Calibrar altura de linha...", command=self.calibrate_row_height
         )
-        self.btn_calibrate_row.grid(row=2, column=0, padx=4, pady=6, sticky="w")
-        ttk.Label(self.box_battle_list, textvariable=self.var_row_height).grid(row=2, column=1, sticky="w")
+        self.btn_calibrate_row.grid(row=3, column=0, padx=4, pady=6, sticky="w")
+        ttk.Label(self.box_battle_list, textvariable=self.var_row_height).grid(row=3, column=1, sticky="w")
 
         self.btn_capture_empty = ttk.Button(
             self.box_battle_list, text="Capturar linha vazia (template)...", command=self.capture_row_empty_template
         )
-        self.btn_capture_empty.grid(row=3, column=0, padx=4, pady=6, sticky="w")
-        ttk.Label(self.box_battle_list, textvariable=self.var_empty_template).grid(row=3, column=1, sticky="w")
+        self.btn_capture_empty.grid(row=4, column=0, padx=4, pady=6, sticky="w")
+        ttk.Label(self.box_battle_list, textvariable=self.var_empty_template).grid(row=4, column=1, sticky="w")
 
         self.entry_empty_threshold = add_field(
-            self.box_battle_list, 4, "Cobertura minima do slot vazio (%)", self.var_empty_threshold, 8, "0 a 100 (padrao 90)"
+            self.box_battle_list, 5, "Cobertura minima do slot vazio (%)", self.var_empty_threshold, 8, "0 a 100 (padrao 90)"
         )
 
         self.btn_pick_name = ttk.Button(
             self.box_battle_list, text="Selecionar faixa de texto do nome...", command=self.pick_name_crop
         )
-        self.btn_pick_name.grid(row=5, column=0, padx=4, pady=6, sticky="w")
-        ttk.Label(self.box_battle_list, textvariable=self.var_name_offset).grid(row=5, column=1, sticky="w")
+        self.btn_pick_name.grid(row=6, column=0, padx=4, pady=6, sticky="w")
+        ttk.Label(self.box_battle_list, textvariable=self.var_name_offset).grid(row=6, column=1, sticky="w")
 
         self.btn_calibrate_attack_border = ttk.Button(
             self.box_battle_list, text="Calibrar ATAQUE normal (vermelho)...",
             command=lambda: self._calibrate_name_color("attack", "normal"),
         )
-        self.btn_calibrate_attack_border.grid(row=6, column=0, padx=4, pady=4, sticky="w")
+        self.btn_calibrate_attack_border.grid(row=7, column=0, padx=4, pady=4, sticky="w")
         self.btn_calibrate_attack_hover = ttk.Button(
             self.box_battle_list, text="Calibrar ATAQUE hover (mouse em cima)...",
             command=lambda: self._calibrate_name_color("attack", "hover"),
         )
-        self.btn_calibrate_attack_hover.grid(row=6, column=1, padx=4, pady=4, sticky="w")
+        self.btn_calibrate_attack_hover.grid(row=7, column=1, padx=4, pady=4, sticky="w")
         self.btn_calibrate_follow_border = ttk.Button(
             self.box_battle_list, text="Calibrar FOLLOW normal (verde)...",
             command=lambda: self._calibrate_name_color("follow", "normal"),
         )
-        self.btn_calibrate_follow_border.grid(row=7, column=0, padx=4, pady=4, sticky="w")
+        self.btn_calibrate_follow_border.grid(row=8, column=0, padx=4, pady=4, sticky="w")
         self.btn_calibrate_follow_hover = ttk.Button(
             self.box_battle_list, text="Calibrar FOLLOW hover (mouse em cima)...",
             command=lambda: self._calibrate_name_color("follow", "hover"),
         )
-        self.btn_calibrate_follow_hover.grid(row=7, column=1, padx=4, pady=4, sticky="w")
+        self.btn_calibrate_follow_hover.grid(row=8, column=1, padx=4, pady=4, sticky="w")
         ttk.Label(self.box_battle_list, textvariable=self.var_name_color_status).grid(
-            row=8, column=0, columnspan=2, sticky="w", padx=4
+            row=9, column=0, columnspan=2, sticky="w", padx=4
         )
         ttk.Label(
             self.box_battle_list,
@@ -251,7 +257,7 @@ class TrainingWindow(ttk.Frame):
             foreground="#666",
             wraplength=600,
             justify="left",
-        ).grid(row=9, column=0, columnspan=2, sticky="w", padx=4)
+        ).grid(row=10, column=0, columnspan=2, sticky="w", padx=4)
 
         # Forma de selecao --------------------------------------------------------
         self.box_select = ttk.LabelFrame(parent, text="3. Forma de selecao do alvo (Modo A)")
@@ -418,7 +424,7 @@ class TrainingWindow(ttk.Frame):
         dummy_state = "normal" if is_dummy else "disabled"
 
         for widget in (
-            self.btn_calibrate_all,
+            self.btn_calibrate_all, self.btn_import_calibration,
             self.btn_pick_region, self.btn_calibrate_row, self.btn_capture_empty, self.entry_empty_threshold,
             self.btn_pick_name, self.btn_calibrate_attack_border, self.btn_calibrate_attack_hover,
             self.btn_calibrate_follow_border, self.btn_calibrate_follow_hover,
@@ -467,6 +473,47 @@ class TrainingWindow(ttk.Frame):
         row_index = max(0, int((ry - by) // row_height))
         row_top = by + row_index * row_height
         return [rx - bx, ry - row_top, rw, rh]
+
+    def import_calibration_from(self, source_key: str) -> None:
+        """Copia a calibracao de Battle List (regiao, altura, template de
+        linha vazia, faixa/cores do nome, forma de ataque) de outra aba com
+        o mesmo formato de config (`BATTLE_LIST_CALIBRATION_KEYS`, ver
+        gui/target_window.py) - evita recalibrar tudo de novo quando as
+        duas abas leem a MESMA Battle List na tela. So copia campos que a
+        origem ja tem preenchidos."""
+        source_cfg = self.app.config_store.section(source_key)
+        imported = 0
+        for key in BATTLE_LIST_CALIBRATION_KEYS:
+            value = source_cfg.get(key)
+            if value not in (None, "", [], {}):
+                self.cfg[key] = copy.deepcopy(value)
+                imported += 1
+        if imported == 0:
+            messagebox.showwarning("Training", f"A aba '{source_key}' ainda nao tem nada calibrado.")
+            return
+        self._refresh_calibration_vars()
+        self.app.config_store.save()
+        self.log(f"Calibracao importada de '{source_key}' ({imported} campo(s)).")
+        messagebox.showinfo(
+            "Training", f"Calibracao importada de '{source_key}'! Confira com 'Testar deteccao'."
+        )
+
+    def _refresh_calibration_vars(self) -> None:
+        """Atualiza os StringVars da tela com os valores atuais de `self.cfg`
+        - usado depois de uma importacao (os campos mudam sem passar pelos
+        metodos de calibracao normais, que ja atualizam a var na hora)."""
+        self.var_region.set(region_text(self.cfg.get("battle_list_region")))
+        row_height = self.cfg.get("row_height")
+        self.var_row_height.set(f"{row_height}px" if row_height else "nao calibrado")
+        self.var_empty_template.set("Template calibrado" if self.cfg.get("row_empty_template") else "nao calibrado")
+        self.var_empty_threshold.set(str(int(float(self.cfg.get("empty_match_threshold", 0.90)) * 100)))
+        self.var_name_offset.set(offset_text(self.cfg.get("name_crop_offset")))
+        self.var_name_color_status.set(self._name_color_status_text())
+        self.var_attack_mode.set(
+            ATTACK_MODE_LABELS.get(self.cfg.get("attack_mode", "single_click"), "Clique simples")
+        )
+        self.var_menu_offset.set(offset_text(self.cfg.get("context_menu_offset")))
+        self._on_attack_mode_change()
 
     def calibrate_all(self) -> None:
         """Encadeia os 4 passos de calibracao BLOQUEANTES do Modo A em
