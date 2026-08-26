@@ -33,16 +33,26 @@ def check_dependencies() -> list[str]:
 
 
 def main() -> int:
-    from core.elevation import is_admin, relaunch_elevated
+    # So faz sentido rodando do fonte (`python main.py`): o .exe empacotado
+    # ja pede elevacao sozinho via manifest do Windows (uac_admin=True no
+    # EasyF.spec), ANTES de qualquer linha de Python rodar - nenhum
+    # relancamento manual e necessario ali. Fazer esse mesmo relancamento
+    # aqui pro .exe empacotado e redundante e PERIGOSO logo apos o
+    # auto-update: dispara uma SEGUNDA extracao do bootloader onefile do
+    # PyInstaller bem em cima do arquivo que acabou de ser trocado, o que
+    # pode falhar com "Failed to load Python DLL" (visto em producao na
+    # v1.1.5) - corrida com antivirus/cache de arquivo no exe recem-escrito.
+    if not getattr(sys, "frozen", False):
+        from core.elevation import is_admin, relaunch_elevated
 
-    if not is_admin():
-        if relaunch_elevated():
-            return 0
-        print(
-            "AVISO: nao foi possivel obter privilegio de administrador - "
-            "clique/tecla pode nao ter efeito se o cliente do jogo rodar elevado.",
-            file=sys.stderr,
-        )
+        if not is_admin():
+            if relaunch_elevated():
+                return 0
+            print(
+                "AVISO: nao foi possivel obter privilegio de administrador - "
+                "clique/tecla pode nao ter efeito se o cliente do jogo rodar elevado.",
+                file=sys.stderr,
+            )
 
     missing = check_dependencies()
     if missing:
