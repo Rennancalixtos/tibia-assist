@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 config.json
+profiles/
 assets/*.png
 assets/*.exe
 .venv/
@@ -8,3 +9,4 @@ build/
 dist/
 *.spec
 !EasyF.spec
+.claude/scheduled_tasks.lock

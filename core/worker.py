@@ -122,6 +122,7 @@ class BaseWorker(threading.Thread):
             self.loop()
         except Exception as exc:
             self.log(f"ERRO: {exc}")
+            self.emit("state", "error")
         finally:
             self.teardown()
             self.emit("state", "stopped")

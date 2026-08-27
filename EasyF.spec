@@ -16,11 +16,18 @@ a = Analysis(
         "pydirectinput",
         "pytesseract",
         "keyboard",
+        "PySide6.QtSvg",
+        "PySide6.QtSvgWidgets",
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["matplotlib", "PyQt5", "PySide2", "scipy", "pandas"],
+    excludes=[
+        "matplotlib", "PyQt5", "scipy", "pandas",
+        "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtQuick3D",
+        "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets",
+        "PySide6.QtMultimedia", "PySide6.QtPdf", "PySide6.Qt3DCore",
+    ],
     noarchive=False,
 )
 
