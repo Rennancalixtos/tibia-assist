@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QRect, Qt
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QDialog, QLabel, QRubberBand, QWidget
 
 from core.screen_capture import ScreenCapture
@@ -31,7 +32,6 @@ class _Overlay(QDialog):
         left, top, width, height = _virtual_geometry()
         self._origin = (left, top)
         self.setGeometry(left, top, width, height)
-        self.setStyleSheet("background-color: rgba(0, 0, 0, 90);")
 
         self.hint_label = QLabel(hint, self)
         self.hint_label.setStyleSheet(
@@ -44,6 +44,10 @@ class _Overlay(QDialog):
 
     def to_absolute(self, x: int, y: int) -> tuple[int, int]:
         return int(x) + self._origin[0], int(y) + self._origin[1]
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 90))
 
     def keyPressEvent(self, event) -> None:
         if event.key() == Qt.Key_Escape:
