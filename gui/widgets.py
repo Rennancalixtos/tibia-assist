@@ -132,6 +132,49 @@ class HotkeyButton(ttk.Button):
         return None
 
 
+class Tooltip:
+    def __init__(self, widget, text: str, wraplength: int = 320):
+        self.widget = widget
+        self.text = text
+        self.wraplength = wraplength
+        self.tip_window: tk.Toplevel | None = None
+        widget.bind("<Enter>", self._show)
+        widget.bind("<Leave>", self._hide)
+        widget.bind("<Destroy>", self._hide)
+
+    def _show(self, _event=None) -> None:
+        if self.tip_window or not self.text:
+            return
+        x = self.widget.winfo_rootx() + 12
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 6
+        self.tip_window = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        try:
+            tw.attributes("-topmost", True)
+        except tk.TclError:
+            pass
+        tk.Label(
+            tw, text=self.text, justify="left", background="#ffffe0", foreground="#000",
+            relief="solid", borderwidth=1, wraplength=self.wraplength, padx=6, pady=4,
+        ).pack()
+
+    def _hide(self, _event=None) -> None:
+        tw = self.tip_window
+        self.tip_window = None
+        if tw is not None:
+            tw.destroy()
+
+
+def add_info_icon(parent, row: int, column: int, text: str, wraplength: int = 320, **grid_kwargs):
+    grid_kwargs.setdefault("sticky", "w")
+    grid_kwargs.setdefault("padx", 4)
+    label = ttk.Label(parent, text="ⓘ", foreground="#0a5", cursor="hand2")
+    label.grid(row=row, column=column, **grid_kwargs)
+    Tooltip(label, text, wraplength=wraplength)
+    return label
+
+
 def add_hotkey_field(parent, row: int, label: str, variable, width: int = 10, hint: str = "", on_change=None):
     ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=4, pady=3)
     button = HotkeyButton(parent, variable, width=width, on_change=on_change)
@@ -154,7 +197,7 @@ def add_field(parent, row: int, label: str, variable, width: int = 12, hint: str
 
 def region_text(region) -> str:
     if not region:
-        return "nao configurado"
+        return "não configurado"
     if len(region) == 4:
         return f"x={region[0]}  y={region[1]}  {region[2]}x{region[3]}"
     return f"x={region[0]}  y={region[1]}"

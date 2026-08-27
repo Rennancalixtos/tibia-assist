@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 import queue
+import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
 from core import background_input, profiles as profile_store, region_selector
-from core.config import Config
+from core.config import RESOURCE_DIR, Config
 from core.coordinator import AutomationCoordinator
 from core.elevation import is_admin
 from core.input_simulator import InputSimulator
@@ -25,8 +27,8 @@ except Exception:
 APP_NAME = "EasyF"
 
 DISCLAIMER = (
-    "Aviso: automacao pode violar os termos de uso do servidor/jogo e "
-    "resultar em banimento. O uso e responsabilidade do usuario."
+    "Aviso: automação pode violar os termos de uso do servidor/jogo e "
+    "resultar em banimento. O uso é responsabilidade do usuário."
 )
 
 TAB_LABELS = {
@@ -44,6 +46,7 @@ class App(tk.Tk):
         self.title(f"{APP_NAME} {APP_VERSION}")
         self.geometry("760x760")
         self.minsize(700, 640)
+        self._apply_app_icon()
 
         self.config_store = config_store
         self.events: "queue.Queue[tuple]" = queue.Queue()
@@ -63,6 +66,14 @@ class App(tk.Tk):
         self._schedule_license_check()
         self._schedule_heartbeat()
 
+    def _apply_app_icon(self) -> None:
+        icon_path = os.path.join(RESOURCE_DIR, "assets", "icon.ico")
+        if os.path.exists(icon_path):
+            try:
+                self.iconbitmap(icon_path)
+            except tk.TclError:
+                pass
+
     def _init_settings_vars(self) -> None:
         hk = self.config_store.section("hotkeys")
         self.var_pause_key = tk.StringVar(value=hk.get("pause", "pause"))
@@ -77,6 +88,9 @@ class App(tk.Tk):
 
         self.var_auto_food_enabled = tk.BooleanVar(value=False)
         self.var_auto_food_status = tk.StringVar(value="parado")
+
+        dry_run_cfg = self.config_store.section("dry_run")
+        self.var_dry_run_enabled = tk.BooleanVar(value=bool(dry_run_cfg.get("enabled", False)))
 
         self._settings_dialog: SettingsDialog | None = None
 
@@ -120,15 +134,27 @@ class App(tk.Tk):
         notebook.add(self.tabs["target"], text="Target")
         notebook.add(self.tabs["training"], text="Training")
 
-        auto_food_bar = ttk.Frame(self, padding=(8, 0, 8, 4))
-        auto_food_bar.pack(fill="x")
+        toggles_bar = ttk.Frame(self, padding=(8, 0, 8, 4))
+        toggles_bar.pack(fill="x")
+
+        dry_run_row = ttk.Frame(toggles_bar)
+        dry_run_row.pack(fill="x")
         ttk.Checkbutton(
-            auto_food_bar,
+            dry_run_row,
+            text="Modo teste (dry-run: só loga, não clica/aperta tecla)",
+            variable=self.var_dry_run_enabled,
+            command=self._toggle_dry_run,
+        ).pack(side="left")
+
+        auto_food_row = ttk.Frame(toggles_bar)
+        auto_food_row.pack(fill="x")
+        ttk.Checkbutton(
+            auto_food_row,
             text="Auto Food (comer automaticamente em segundo plano)",
             variable=self.var_auto_food_enabled,
             command=self._toggle_auto_food,
         ).pack(side="left")
-        ttk.Label(auto_food_bar, textvariable=self.var_auto_food_status, foreground="#666").pack(
+        ttk.Label(auto_food_row, textvariable=self.var_auto_food_status, foreground="#666").pack(
             side="left", padx=(8, 0)
         )
 
@@ -144,16 +170,16 @@ class App(tk.Tk):
         ttk.Label(
             footer,
             text=f"Input: {InputSimulator.backend_name()}  |  "
-            f"Administrador: {'Sim' if admin_ok else 'Nao'}  |  "
-            f"Escape de emergencia: mova o mouse para o canto superior esquerdo da tela.",
+            f"Administrador: {'Sim' if admin_ok else 'Não'}  |  "
+            f"Escape de emergência: mova o mouse para o canto superior esquerdo da tela.",
             foreground="#666" if admin_ok else "#a33",
         ).pack(anchor="w", pady=(2, 0))
         if not admin_ok:
             ttk.Label(
                 footer,
-                text="⚠ Sem privilegio de administrador: clique/tecla sintetico pode nao ter "
+                text="⚠ Sem privilégio de administrador: clique/tecla sintético pode não ter "
                 "efeito se o cliente do jogo rodar elevado. Feche e abra o programa de novo "
-                "aceitando o pedido de elevacao (UAC) do Windows.",
+                "aceitando o pedido de elevação (UAC) do Windows.",
                 foreground="#a33",
                 wraplength=720,
                 justify="left",
@@ -162,11 +188,11 @@ class App(tk.Tk):
     def _register_hotkeys(self) -> None:
         self._clear_hotkeys()
         if not self.var_hotkeys_on.get():
-            self.var_hotkey_status.set("Hotkeys globais desativadas - use os botoes da interface.")
+            self.var_hotkey_status.set("Hotkeys globais desativadas - use os botões da interface.")
             return
         if keyboard is None:
             self.var_hotkey_status.set(
-                "Modulo 'keyboard' indisponivel (no Linux exige root). Use os botoes da interface."
+                "Módulo 'keyboard' indisponível (no Linux exige root). Use os botões da interface."
             )
             return
         try:
@@ -181,7 +207,7 @@ class App(tk.Tk):
                 f"{self.var_stop_key.get().upper()} para tudo."
             )
         except Exception as exc:
-            self.var_hotkey_status.set(f"Nao foi possivel registrar as hotkeys: {exc}")
+            self.var_hotkey_status.set(f"Não foi possível registrar as hotkeys: {exc}")
 
     def _clear_hotkeys(self) -> None:
         if keyboard is None:
@@ -236,7 +262,7 @@ class App(tk.Tk):
         self.update_idletasks()
         point = self.select_point("Clique na janela do jogo (para o modo background)")
         if point is None:
-            self.var_background_status.set("Selecao cancelada.")
+            self.var_background_status.set("Seleção cancelada.")
             return
         x, y = point
         try:
@@ -245,7 +271,7 @@ class App(tk.Tk):
             self.var_background_status.set(f"Falha ao identificar a janela: {exc}")
             return
         if not found:
-            self.var_background_status.set("Nao foi possivel identificar uma janela nesse ponto.")
+            self.var_background_status.set("Não foi possível identificar uma janela nesse ponto.")
             return
         _hwnd, title = found
         self.var_background_window.set(title)
@@ -261,7 +287,7 @@ class App(tk.Tk):
                 "Modo background ativado, mas nenhuma janela foi selecionada ainda."
             )
         else:
-            self.var_background_status.set("Configuracao de modo background salva.")
+            self.var_background_status.set("Configuração de modo background salva.")
 
     def _test_background_click(self) -> None:
         title = self.var_background_window.get().strip()
@@ -275,10 +301,10 @@ class App(tk.Tk):
             messagebox.showerror(APP_NAME, f"Falha ao localizar a janela: {exc}")
             return
         if not hwnd:
-            messagebox.showerror(APP_NAME, "Janela do jogo nao encontrada (titulo salvo nao bate mais).")
+            messagebox.showerror(APP_NAME, "Janela do jogo não encontrada (título salvo não bate mais).")
             return
 
-        point = self.select_point("Clique no ponto que sera usado no teste (ex: um botao do jogo)")
+        point = self.select_point("Clique no ponto que será usado no teste (ex: um botão do jogo)")
         if point is None:
             return
         x, y = point
@@ -300,8 +326,12 @@ class App(tk.Tk):
             messagebox.showinfo(
                 APP_NAME,
                 "Mensagem de clique enviada para a janela do jogo sem mover o mouse real.\n"
-                "Isso NAO confirma que o jogo reagiu - confirme visualmente se o clique funcionou.",
+                "Isso NÃO confirma que o jogo reagiu - confirme visualmente se o clique funcionou.",
             )
+
+    def _toggle_dry_run(self) -> None:
+        self.config_store.section("dry_run")["enabled"] = bool(self.var_dry_run_enabled.get())
+        self.config_store.save()
 
     def _toggle_auto_food(self) -> None:
         if self.var_auto_food_enabled.get():
@@ -340,14 +370,21 @@ class App(tk.Tk):
 
     def _periodic_license_check(self) -> None:
         was_valid = self.license.valid
-        self.license.refresh()
+
+        def worker() -> None:
+            self.license.refresh()
+            self.after(0, lambda: self._on_license_check_result(was_valid))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_license_check_result(self, was_valid: bool) -> None:
         self.config_store.save()
         self._update_account_info()
         if was_valid and not self.license.valid:
             self.stop_all()
             messagebox.showwarning(
                 APP_NAME,
-                f"Licenca invalida: {self.license.message}\nTodas as rotinas foram paradas.",
+                f"Licença inválida: {self.license.message}\nTodas as rotinas foram paradas.",
             )
         self._schedule_license_check()
 
@@ -357,14 +394,20 @@ class App(tk.Tk):
         self.after(self.HEARTBEAT_INTERVAL_MS, self._periodic_heartbeat)
 
     def _periodic_heartbeat(self) -> None:
-        result = self.license.heartbeat()
+        def worker() -> None:
+            result = self.license.heartbeat()
+            self.after(0, lambda: self._on_heartbeat_result(result))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_heartbeat_result(self, result: str) -> None:
         self.config_store.save()
 
         if result == "replaced":
-            self._force_logout("Sua conta foi acessada em outro local. Esta sessao foi encerrada.")
+            self._force_logout("Sua conta foi acessada em outro local. Esta sessão foi encerrada.")
             return
         if result == "auth_error" and not self.license.valid:
-            self._force_logout(f"Sessao expirada: {self.license.message}\nFaca login novamente.")
+            self._force_logout(f"Sessão expirada: {self.license.message}\nFaça login novamente.")
             return
         self._schedule_heartbeat()
 
@@ -386,12 +429,12 @@ class App(tk.Tk):
 
     def start_worker(self, key: str, worker_class, cfg: dict) -> None:
         if not ensure_license(self, self.license, self._save_license):
-            messagebox.showwarning(APP_NAME, "E necessaria uma licenca ativa para iniciar.")
+            messagebox.showwarning(APP_NAME, "É necessária uma licença ativa para iniciar.")
             return
 
         existing = self.workers.get(key)
         if existing is not None and existing.is_alive():
-            messagebox.showinfo(APP_NAME, "Esta rotina ja esta em execucao.")
+            messagebox.showinfo(APP_NAME, "Esta rotina já está em execução.")
             return
         cfg = dict(cfg)
         cfg.update(self.build_worker_extras())
@@ -492,6 +535,8 @@ class App(tk.Tk):
         bgcfg = self.config_store.section("background_mode")
         bgcfg["enabled"] = bool(self.var_background_enabled.get())
         bgcfg["window_title"] = self.var_background_window.get().strip()
+
+        self.config_store.section("dry_run")["enabled"] = bool(self.var_dry_run_enabled.get())
 
     def apply_profile_data(self, data: dict) -> None:
         self.config_store.data = profile_store.merge_into_config(self.config_store.data, data)

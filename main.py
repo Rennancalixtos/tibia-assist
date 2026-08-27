@@ -29,15 +29,15 @@ def main() -> int:
             if relaunch_elevated():
                 return 0
             print(
-                "AVISO: nao foi possivel obter privilegio de administrador - "
-                "clique/tecla pode nao ter efeito se o cliente do jogo rodar elevado.",
+                "AVISO: não foi possível obter privilégio de administrador - "
+                "clique/tecla pode não ter efeito se o cliente do jogo rodar elevado.",
                 file=sys.stderr,
             )
 
     missing = check_dependencies()
     if missing:
         message = (
-            "Dependencias ausentes: " + ", ".join(missing) + "\n\n"
+            "Dependências ausentes: " + ", ".join(missing) + "\n\n"
             "Instale com:\n    pip install -r requirements.txt"
         )
         print(message, file=sys.stderr)
@@ -57,17 +57,14 @@ def main() -> int:
     config_store = Config()
 
     api_base_url = config_store.get("license.api_base_url", "")
-    update_result = run_update_check(api_base_url, APP_VERSION)
+    license_manager = LicenseManager(config_store.section("license"))
+
+    update_result = run_update_check(api_base_url, APP_VERSION, license_manager)
+    config_store.save()
     if update_result == "updated":
         return 0
 
-    license_manager = LicenseManager(config_store.section("license"))
-
     while True:
-        if license_manager.logged_in:
-            license_manager.refresh()
-            config_store.save()
-
         if not run_startup_login(license_manager, config_store.save):
             return 1
 

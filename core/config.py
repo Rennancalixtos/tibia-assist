@@ -76,6 +76,9 @@ DEFAULTS: dict[str, Any] = {
         "enabled": False,
         "window_title": "",
     },
+    "dry_run": {
+        "enabled": False,
+    },
     "runemaker": {
         "spell_hotkey": "f2",
         "blank_slot": None,
@@ -102,7 +105,6 @@ DEFAULTS: dict[str, Any] = {
     "target": {
         "battle_list_region": None,
         "battle_empty_template": "",
-        "empty_match_threshold": 0.85,
         "attack_color_rgb": [254, 0, 0],
         "attack_color_tolerance": 6,
         "attack_color_min_pixels": 3,

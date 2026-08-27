@@ -14,10 +14,11 @@ _FG_ERROR = "#ff6b6b"
 
 
 class SplashScreen(tk.Tk):
-    def __init__(self, api_base_url: str, current_version: str):
+    def __init__(self, api_base_url: str, current_version: str, license_manager=None):
         super().__init__()
         self.api_base_url = api_base_url
         self.current_version = current_version
+        self.license_manager = license_manager
         self.result = "checking"
         self._events: "queue.Queue[tuple]" = queue.Queue()
 
@@ -35,7 +36,7 @@ class SplashScreen(tk.Tk):
 
         tk.Label(body, text="EasyF", fg=_FG, bg=_BG, font=("Segoe UI", 14, "bold")).pack(anchor="w")
 
-        self.var_status = tk.StringVar(value="Verificando atualizacoes...")
+        self.var_status = tk.StringVar(value="Verificando atualizações...")
         tk.Label(body, textvariable=self.var_status, fg=_FG_DIM, bg=_BG, font=("Segoe UI", 9)).pack(
             anchor="w", pady=(10, 10)
         )
@@ -56,10 +57,11 @@ class SplashScreen(tk.Tk):
         try:
             update_info = check_for_update(self.api_base_url, self.current_version)
         except Exception as exc:
-            self._events.put(("error", f"Falha ao checar atualizacao: {exc}"))
+            self._events.put(("error", f"Falha ao checar atualização: {exc}"))
             return
 
         if not update_info:
+            self._check_license()
             self._events.put(("done", None))
             return
 
@@ -71,33 +73,44 @@ class SplashScreen(tk.Tk):
         try:
             applied = apply_update(self.api_base_url, update_info, on_progress=report)
         except Exception as exc:
-            self._events.put(("error", f"Falha ao baixar/instalar a atualizacao: {exc}"))
+            self._events.put(("error", f"Falha ao baixar/instalar a atualização: {exc}"))
             return
 
         self._events.put(("updated", None) if applied else ("done", None))
+
+    def _check_license(self) -> None:
+        if self.license_manager is None or not self.license_manager.logged_in:
+            return
+        self._events.put(("checking_license", None))
+        try:
+            self.license_manager.refresh()
+        except Exception:
+            pass
 
     def _pump(self) -> None:
         try:
             while True:
                 kind, payload = self._events.get_nowait()
                 if kind == "downloading":
-                    self.var_status.set(f"Baixando atualizacao {payload.get('version', '')}...")
+                    self.var_status.set(f"Baixando atualização {payload.get('version', '')}...")
                 elif kind == "progress":
                     downloaded, total = payload
                     if not total:
-                        self.var_status.set(f"Baixando atualizacao... {downloaded} bytes")
+                        self.var_status.set(f"Baixando atualização... {downloaded} bytes")
                     else:
                         pct = int(downloaded * 100 / total)
-                        self.var_status.set(f"Baixando atualizacao... {pct}% ({downloaded}/{total})")
+                        self.var_status.set(f"Baixando atualização... {pct}% ({downloaded}/{total})")
                         if str(self.progress["mode"]) != "determinate":
                             self.progress.stop()
                             self.progress.configure(mode="determinate", maximum=100)
                         self.progress["value"] = pct
                 elif kind == "updated":
-                    self.var_status.set("Atualizacao concluida - reabrindo...")
+                    self.var_status.set("Atualização concluída - reabrindo...")
                     self.result = "updated"
                     self.after(300, self.destroy)
                     return
+                elif kind == "checking_license":
+                    self.var_status.set("Verificando licença...")
                 elif kind == "done":
                     self.result = "no_update"
                     self.destroy()
@@ -128,7 +141,7 @@ class SplashScreen(tk.Tk):
         self.progress.configure(mode="indeterminate")
         self.progress.pack(fill="x")
         self.progress.start(12)
-        self.var_status.set("Verificando atualizacoes...")
+        self.var_status.set("Verificando atualizações...")
         self.result = "checking"
         self._start_check()
 
@@ -137,7 +150,7 @@ class SplashScreen(tk.Tk):
         self.destroy()
 
 
-def run_update_check(api_base_url: str, current_version: str) -> str:
-    splash = SplashScreen(api_base_url, current_version)
+def run_update_check(api_base_url: str, current_version: str, license_manager=None) -> str:
+    splash = SplashScreen(api_base_url, current_version, license_manager)
     splash.mainloop()
     return splash.result

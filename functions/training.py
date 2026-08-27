@@ -47,11 +47,11 @@ class TrainingWorker(BaseWorker):
 
         self.battle_list_region = self.config.get("battle_list_region")
         if not is_valid_region(self.battle_list_region):
-            raise ValueError("Regiao da Battle List nao configurada.")
+            raise ValueError("Região da Battle List não configurada.")
 
         self.empty_template = self._load_template("training_battle_empty_template")
         if self.empty_template is None:
-            raise ValueError("Modelo de lista vazia nao calibrado.")
+            raise ValueError("Modelo de lista vazia não calibrado.")
         self.empty_threshold = float(self.config.get("empty_match_threshold", 0.85))
 
         rgb = self.config.get("attack_color_rgb") or [254, 0, 0]
@@ -61,12 +61,12 @@ class TrainingWorker(BaseWorker):
 
         self.attack_key = (self.config.get("attack_key") or "space").strip().lower()
         if not self.attack_key:
-            raise ValueError("Tecla de ataque nao configurada.")
+            raise ValueError("Tecla de ataque não configurada.")
         self.attack_check_delay = float(self.config.get("attack_check_delay", 0.5))
 
         self.creature_name = (self.config.get("creature_name") or "").strip()
         if not self.creature_name:
-            raise ValueError("Nome do monstro de treino nao configurado.")
+            raise ValueError("Nome do monstro de treino não configurado.")
         self.name_match_threshold = float(self.config.get("name_match_threshold", 0.80))
 
         self.missing_retries = max(1, int(self.config.get("missing_retries", 5)))
@@ -78,10 +78,10 @@ class TrainingWorker(BaseWorker):
         if self.cast_spell_enabled:
             self.spell_hotkey = (self.config.get("spell_hotkey") or "").strip()
             if not self.spell_hotkey:
-                raise ValueError("Tecla de atalho da magia de ataque nao configurada.")
+                raise ValueError("Tecla de atalho da magia de ataque não configurada.")
             self.check_mana = bool(self.config.get("check_mana", True))
             if self.check_mana and not is_valid_region(self.config.get("mana_region")):
-                raise ValueError("Regiao de OCR da mana (magia de ataque) nao configurada.")
+                raise ValueError("Região de OCR da mana (magia de ataque) não configurada.")
 
         self.anti_afk_enabled = bool(self.config.get("anti_afk_enabled", False))
         self.anti_afk_interval = float(self.config.get("anti_afk_interval_minutes", 10) or 10) * 60
@@ -157,8 +157,8 @@ class TrainingWorker(BaseWorker):
         score = self.battle_list_empty_score()
         if score is None:
             self.warn_once(
-                "AVISO: modelo de lista vazia maior que a regiao configurada - "
-                "recalibre a regiao da Battle List ou o modelo."
+                "AVISO: modelo de lista vazia maior que a região configurada - "
+                "recalibre a região da Battle List ou o modelo."
             )
             return False
         return score >= self.empty_threshold
@@ -172,7 +172,7 @@ class TrainingWorker(BaseWorker):
         try:
             return read_name(frame)
         except OCRUnavailable as exc:
-            self.warn_once(f"OCR indisponivel: {exc}")
+            self.warn_once(f"OCR indisponível: {exc}")
             return ""
 
     def creature_present(self) -> bool:
@@ -199,7 +199,7 @@ class TrainingWorker(BaseWorker):
                 mana = self._read_mana()
                 self.emit("mana_reading", mana)
                 if mana is None:
-                    self.warn_once("Nao consegui ler a mana via OCR. Verifique a regiao configurada.")
+                    self.warn_once("Não consegui ler a mana via OCR. Verifique a região configurada.")
                     return
                 if mana < int(self.config.get("min_mana", 300)):
                     self.warn_once(f"Mana insuficiente ({mana}) para conjurar - aguardando regenerar...")
@@ -229,10 +229,10 @@ class TrainingWorker(BaseWorker):
             if not self.creature_present():
                 self._missing_count += 1
                 if self._missing_count == 1:
-                    self.log(f"Alvo de treino '{self.creature_name}' nao encontrado na lista - tentando de novo...")
+                    self.log(f"Alvo de treino '{self.creature_name}' não encontrado na lista - tentando de novo...")
                 if self._missing_count >= self.missing_retries:
-                    self.log("Alvo de treino nao encontrado - verifique se ainda esta por perto.")
-                    self.warn_popup("Alvo de treino nao encontrado - verifique se ainda esta por perto.")
+                    self.log("Alvo de treino não encontrado - verifique se ainda está por perto.")
+                    self.warn_popup("Alvo de treino não encontrado - verifique se ainda está por perto.")
                     self.pause()
                     self._missing_count = 0
                     continue
@@ -258,7 +258,7 @@ class TrainingWorker(BaseWorker):
                 self.bump_counter()
                 self.log(
                     f"Ataque #{self.counter}: tecla '{self.attack_key}' pressionada - "
-                    f"atacando={'sim' if attacking else 'nao confirmado'}."
+                    f"atacando={'sim' if attacking else 'não confirmado'}."
                 )
 
             if self.cast_spell_enabled:

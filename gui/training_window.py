@@ -22,7 +22,7 @@ class TrainingWindow(ttk.Frame):
 
         self.var_region = tk.StringVar(value=region_text(self.cfg.get("battle_list_region")))
         self.var_empty_template = tk.StringVar(
-            value="Modelo calibrado" if self.cfg.get("training_battle_empty_template") else "nao calibrado"
+            value="Modelo calibrado" if self.cfg.get("training_battle_empty_template") else "não calibrado"
         )
         self.var_empty_threshold = tk.StringVar(
             value=str(int(float(self.cfg.get("empty_match_threshold", 0.85)) * 100))
@@ -63,7 +63,6 @@ class TrainingWindow(ttk.Frame):
         self.var_afk_key_a = tk.StringVar(value=self.cfg.get("anti_afk_key_a", "up"))
         self.var_afk_key_b = tk.StringVar(value=self.cfg.get("anti_afk_key_b", "down"))
 
-        self.var_dry_run = tk.BooleanVar(value=True)
         self.var_status = tk.StringVar(value="parado")
         self.var_elapsed = tk.StringVar(value="00:00:00")
         self.var_counter = tk.StringVar(value="0")
@@ -94,15 +93,12 @@ class TrainingWindow(ttk.Frame):
     def _build(self) -> None:
         body = self.body
 
-        box_run = ttk.LabelFrame(body, text="1. Execucao")
+        box_run = ttk.LabelFrame(body, text="1. Execução")
         box_run.grid(row=0, column=0, sticky="ew", pady=4)
 
         actions = ttk.Frame(box_run)
         actions.grid(row=0, column=0, columnspan=4, sticky="w", pady=(2, 6))
-        ttk.Checkbutton(
-            actions, text="Modo teste (dry-run: so loga, nao aperta a tecla)", variable=self.var_dry_run
-        ).pack(side="left", padx=4)
-        ttk.Button(actions, text="Testar deteccao", command=self.test_detection).pack(side="left", padx=8)
+        ttk.Button(actions, text="Testar detecção", command=self.test_detection).pack(side="left", padx=8)
         ttk.Button(actions, text="Testar tecla de ataque", command=self.test_attack_key).pack(side="left", padx=8)
 
         self.btn_start = ttk.Button(box_run, text="Iniciar", command=self.start)
@@ -142,26 +138,26 @@ class TrainingWindow(ttk.Frame):
         box_list.grid(row=0, column=0, sticky="ew", pady=4)
 
         ttk.Button(
-            box_list, text="Selecionar regiao da Battle List...", command=self.pick_battle_list_region
+            box_list, text="Selecionar região da Battle List...", command=self.pick_battle_list_region
         ).grid(row=0, column=0, padx=4, pady=6, sticky="w")
         ttk.Label(box_list, textvariable=self.var_region).grid(row=0, column=1, sticky="w")
         ttk.Label(
             box_list,
-            text="Arraste so pela LISTA de criaturas (comece no topo da 1a linha - sem "
-            "pegar o titulo/icones/dropdown de ordenacao).",
+            text="Arraste só pela LISTA de criaturas (comece no topo da 1a linha - sem "
+            "pegar o título/ícones/dropdown de ordenação).",
             foreground="#666",
             wraplength=580,
             justify="left",
         ).grid(row=1, column=0, columnspan=2, sticky="w", padx=4)
 
         ttk.Button(
-            box_list, text="Capturar modelo de lista vazia (cabecalho + 1a linha)...",
+            box_list, text="Capturar modelo de lista vazia (cabeçalho + 1a linha)...",
             command=self.capture_empty_template,
         ).grid(row=2, column=0, padx=4, pady=6, sticky="w")
         ttk.Label(box_list, textvariable=self.var_empty_template).grid(row=2, column=1, sticky="w")
         ttk.Label(
             box_list,
-            text="Com a lista VAZIA no jogo, arraste incluindo o titulo da janela 'Battle' + a "
+            text="Com a lista VAZIA no jogo, arraste incluindo o título da janela 'Battle' + a "
             "1a linha (vazia) logo abaixo.",
             foreground="#666",
             wraplength=580,
@@ -169,7 +165,7 @@ class TrainingWindow(ttk.Frame):
         ).grid(row=3, column=0, columnspan=2, sticky="w", padx=4)
 
         self.entry_empty_threshold = add_field(
-            box_list, 4, "Confianca minima do modelo vazio (%)", self.var_empty_threshold, 8, "0 a 100 (padrao 85)"
+            box_list, 4, "Confiança mínima do modelo vazio (%)", self.var_empty_threshold, 8, "0 a 100 (padrão 85)"
         )
 
         box_color = ttk.LabelFrame(parent, text="2. Cor de ataque (nome da criatura)")
@@ -180,11 +176,11 @@ class TrainingWindow(ttk.Frame):
         ttk.Entry(color_row, textvariable=self.var_color_r, width=5).pack(side="left")
         ttk.Entry(color_row, textvariable=self.var_color_g, width=5).pack(side="left", padx=4)
         ttk.Entry(color_row, textvariable=self.var_color_b, width=5).pack(side="left")
-        add_field(box_color, 1, "Tolerancia por canal", self.var_color_tolerance, 8, "0 a 255 (padrao 6)")
-        add_field(box_color, 2, "Pixels minimos", self.var_color_min_pixels, 8, "padrao 3")
+        add_field(box_color, 1, "Tolerância por canal", self.var_color_tolerance, 8, "0 a 255 (padrão 6)")
+        add_field(box_color, 2, "Pixels mínimos", self.var_color_min_pixels, 8, "padrão 3")
         ttk.Label(
             box_color,
-            text="Padrao RGB 254,0,0 (vermelho puro do nome em ATAQUE) - o mesmo mecanismo usado no Target.",
+            text="Padrão RGB 254,0,0 (vermelho puro do nome em ATAQUE) - o mesmo mecanismo usado no Target.",
             foreground="#666",
             wraplength=580,
             justify="left",
@@ -194,7 +190,7 @@ class TrainingWindow(ttk.Frame):
         box_key.grid(row=2, column=0, sticky="ew", pady=4)
         add_hotkey_field(box_key, 0, "Tecla de ataque", self.var_attack_key, 10, "ex: space")
         add_field(
-            box_key, 1, "Delay apos apertar (s)", self.var_attack_check_delay, 8, "aguarda antes de conferir a cor"
+            box_key, 1, "Delay após apertar (s)", self.var_attack_check_delay, 8, "aguarda antes de conferir a cor"
         )
         ttk.Label(
             box_key,
@@ -207,10 +203,10 @@ class TrainingWindow(ttk.Frame):
 
         box_rate = ttk.LabelFrame(parent, text="4. Ritmo")
         box_rate.grid(row=3, column=0, sticky="ew", pady=4)
-        add_field(box_rate, 0, "Delay minimo (alvo sumido) (s)", self.var_idle_min, 8, "ex: 2.0")
-        add_field(box_rate, 1, "Delay maximo (alvo sumido) (s)", self.var_idle_max, 8, "ex: 4.0")
-        add_field(box_rate, 2, "Delay minimo (ja atacando) (s)", self.var_engaged_min, 8, "ex: 1.0")
-        add_field(box_rate, 3, "Delay maximo (ja atacando) (s)", self.var_engaged_max, 8, "ex: 2.0")
+        add_field(box_rate, 0, "Delay mínimo (alvo sumido) (s)", self.var_idle_min, 8, "ex: 2.0")
+        add_field(box_rate, 1, "Delay máximo (alvo sumido) (s)", self.var_idle_max, 8, "ex: 4.0")
+        add_field(box_rate, 2, "Delay mínimo (já atacando) (s)", self.var_engaged_min, 8, "ex: 1.0")
+        add_field(box_rate, 3, "Delay máximo (já atacando) (s)", self.var_engaged_max, 8, "ex: 2.0")
 
         self.box_target = ttk.LabelFrame(parent, text="5. Alvo de treino permanente")
         self.box_target.grid(row=4, column=0, sticky="ew", pady=4)
@@ -218,7 +214,7 @@ class TrainingWindow(ttk.Frame):
             self.box_target, 0, "Nome do monstro de treino", self.var_creature_name, 24, "ex: Training Monk"
         )
         self.entry_name_threshold = add_field(
-            self.box_target, 1, "Similaridade minima do nome (%)", self.var_name_threshold, 8, "tolerante a falhas de OCR"
+            self.box_target, 1, "Similaridade mínima do nome (%)", self.var_name_threshold, 8, "tolerante a falhas de OCR"
         )
         self.entry_missing_retries = add_field(
             self.box_target, 2, "Tentativas antes de pausar", self.var_missing_retries, 8, "alvo sumido da lista"
@@ -228,8 +224,8 @@ class TrainingWindow(ttk.Frame):
         )
         ttk.Label(
             self.box_target,
-            text="O nome e lido via OCR na regiao inteira da Battle List, ignorando maiusculas "
-            "e pequenas falhas de leitura - assim o bot so ataca enquanto o monstro certo "
+            text="O nome é lido via OCR na região inteira da Battle List, ignorando maiúsculas "
+            "e pequenas falhas de leitura - assim o bot só ataca enquanto o monstro certo "
             "estiver na lista.",
             foreground="#666",
             wraplength=600,
@@ -239,7 +235,7 @@ class TrainingWindow(ttk.Frame):
         self.box_spell = ttk.LabelFrame(parent, text="6. Magia de ataque (opcional, treino de magic level)")
         self.box_spell.grid(row=5, column=0, sticky="ew", pady=4)
         self.chk_cast_spell = ttk.Checkbutton(
-            self.box_spell, text="Tambem conjurar magia de ataque enquanto o alvo estiver selecionado",
+            self.box_spell, text="Também conjurar magia de ataque enquanto o alvo estiver selecionado",
             variable=self.var_cast_spell, command=self._update_field_states,
         )
         self.chk_cast_spell.grid(row=0, column=0, columnspan=3, sticky="w", padx=4, pady=3)
@@ -249,16 +245,16 @@ class TrainingWindow(ttk.Frame):
         self.chk_check_mana = ttk.Checkbutton(self.box_spell, text="Verificar mana", variable=self.var_check_mana)
         self.chk_check_mana.grid(row=2, column=0, sticky="w", padx=4, pady=3)
         self.btn_pick_mana_region = ttk.Button(
-            self.box_spell, text="Regiao da mana...", command=self.pick_mana_region
+            self.box_spell, text="Região da mana...", command=self.pick_mana_region
         )
         self.btn_pick_mana_region.grid(row=2, column=1, padx=4)
         ttk.Label(self.box_spell, textvariable=self.var_mana_region).grid(row=2, column=2, sticky="w", padx=4)
-        self.entry_min_mana = add_field(self.box_spell, 3, "Mana minima", self.var_min_mana, 8, "pausa a magia abaixo disso")
+        self.entry_min_mana = add_field(self.box_spell, 3, "Mana mínima", self.var_min_mana, 8, "pausa a magia abaixo disso")
         self.entry_spell_delay_min = add_field(
-            self.box_spell, 4, "Delay minimo entre magias (s)", self.var_spell_delay_min, 8, "ex: 1.5"
+            self.box_spell, 4, "Delay mínimo entre magias (s)", self.var_spell_delay_min, 8, "ex: 1.5"
         )
         self.entry_spell_delay_max = add_field(
-            self.box_spell, 5, "Delay maximo entre magias (s)", self.var_spell_delay_max, 8, "ex: 2.5"
+            self.box_spell, 5, "Delay máximo entre magias (s)", self.var_spell_delay_max, 8, "ex: 2.5"
         )
         self.btn_test_ocr_mana = ttk.Button(self.box_spell, text="Testar OCR da mana", command=self.test_mana_ocr)
         self.btn_test_ocr_mana.grid(row=6, column=0, padx=4, pady=(4, 6), sticky="w")
@@ -266,7 +262,7 @@ class TrainingWindow(ttk.Frame):
         box_afk = ttk.LabelFrame(parent, text="7. Anti-AFK-kick")
         box_afk.grid(row=6, column=0, sticky="ew", pady=4)
         ttk.Checkbutton(
-            box_afk, text="Enviar acao anti-AFK periodicamente", variable=self.var_afk_enabled
+            box_afk, text="Enviar ação anti-AFK periodicamente", variable=self.var_afk_enabled
         ).grid(row=0, column=0, columnspan=3, sticky="w", padx=4, pady=3)
         add_field(box_afk, 1, "Intervalo (minutos)", self.var_afk_interval, 8, "ex: 10")
         add_hotkey_field(box_afk, 2, "Tecla de movimento (ida)", self.var_afk_key_a, 10, "ex: up")
@@ -274,7 +270,7 @@ class TrainingWindow(ttk.Frame):
         ttk.Label(
             box_afk,
             text="Fallback de 'movimento leve' (aperta uma tecla e a oposta em seguida) caso a "
-            "tecla de ataque em loop nao conte como atividade no seu servidor.",
+            "tecla de ataque em loop não conte como atividade no seu servidor.",
             foreground="#666",
             wraplength=680,
             justify="left",
@@ -282,9 +278,9 @@ class TrainingWindow(ttk.Frame):
 
         ttk.Label(
             parent,
-            text="Aviso: esta funcao depende de leitura visual (template/cor/OCR) da Battle List. "
+            text="Aviso: esta função depende de leitura visual (template/cor/OCR) da Battle List. "
             "Mudar o tamanho da janela do jogo, o zoom ou a skin da Battle List depois de "
-            "calibrar pode quebrar a deteccao - recalibre se isso acontecer.",
+            "calibrar pode quebrar a detecção - recalibre se isso acontecer.",
             foreground="#a33",
             wraplength=700,
             justify="left",
@@ -307,7 +303,7 @@ class TrainingWindow(ttk.Frame):
 
     def pick_battle_list_region(self) -> None:
         region = self.app.select_region(
-            "Arraste cobrindo toda a area visivel da Battle List (cabecalho + linhas)  -  ESC cancela"
+            "Arraste cobrindo toda a área visível da Battle List (cabeçalho + linhas)  -  ESC cancela"
         )
         if not region:
             return
@@ -315,11 +311,11 @@ class TrainingWindow(ttk.Frame):
         self.var_region.set(region_text(region))
         self.battle_overlay.configure_region(region)
         self.app.config_store.save()
-        self.log(f"Regiao da Battle List definida: {region_text(region)}")
+        self.log(f"Região da Battle List definida: {region_text(region)}")
 
     def capture_empty_template(self) -> None:
         region = self.app.select_region(
-            "Com a lista VAZIA, selecione o cabecalho 'Battle' + a 1a linha (vazia)  -  ESC cancela"
+            "Com a lista VAZIA, selecione o cabeçalho 'Battle' + a 1a linha (vazia)  -  ESC cancela"
         )
         if not region:
             return
@@ -334,20 +330,20 @@ class TrainingWindow(ttk.Frame):
         self.log(f"Modelo de lista vazia salvo em {path}")
 
     def pick_mana_region(self) -> None:
-        region = self.app.select_region("Selecione o numero de MANA na barra de status  -  ESC cancela")
+        region = self.app.select_region("Selecione o número de MANA na barra de status  -  ESC cancela")
         if not region:
             return
         self.cfg["mana_region"] = region
         self.var_mana_region.set(region_text(region))
         self.app.config_store.save()
-        self.log(f"Regiao de mana definida: {region_text(region)}")
+        self.log(f"Região de mana definida: {region_text(region)}")
 
     def test_mana_ocr(self) -> None:
         self.save_config()
         configure_tesseract(on_progress=self.log)
         region = self.cfg.get("mana_region")
         if not is_valid_region(region):
-            messagebox.showwarning("Training", "Regiao de mana nao configurada.")
+            messagebox.showwarning("Training", "Região de mana não configurada.")
             return
         try:
             with ScreenCapture() as cap:
@@ -355,7 +351,7 @@ class TrainingWindow(ttk.Frame):
         except OCRUnavailable as exc:
             messagebox.showerror("Training", str(exc))
             return
-        message = f"OCR mana: {value if value is not None else 'nao reconhecido'}"
+        message = f"OCR mana: {value if value is not None else 'não reconhecido'}"
         self.log(message)
         messagebox.showinfo("Training", message)
 
@@ -371,7 +367,7 @@ class TrainingWindow(ttk.Frame):
             worker = TrainingWorker(dict(cfg), self.app.events)
             worker.setup()
         except Exception as exc:
-            messagebox.showerror("Training", f"Falha ao preparar deteccao: {exc}")
+            messagebox.showerror("Training", f"Falha ao preparar detecção: {exc}")
             return
 
         try:
@@ -381,19 +377,19 @@ class TrainingWindow(ttk.Frame):
             attacking = worker.is_attacking() if presente else False
         except Exception as exc:
             worker.teardown()
-            messagebox.showerror("Training", f"Falha na deteccao: {exc}")
+            messagebox.showerror("Training", f"Falha na detecção: {exc}")
             return
         worker.teardown()
 
-        score_text = f"{score * 100:.1f}%" if score is not None else "modelo maior que a regiao"
+        score_text = f"{score * 100:.1f}%" if score is not None else "modelo maior que a região"
         message = (
-            f"Battle List vazia: {'sim' if vazia else 'nao'} (confianca: {score_text}, minimo: "
+            f"Battle List vazia: {'sim' if vazia else 'não'} (confiança: {score_text}, mínimo: "
             f"{worker.empty_threshold * 100:.0f}%)\n"
-            f"Alvo de treino '{worker.creature_name}' presente: {'sim' if presente else 'nao'}\n"
-            f"Cor de ataque detectada: {'sim' if attacking else 'nao'}"
+            f"Alvo de treino '{worker.creature_name}' presente: {'sim' if presente else 'não'}\n"
+            f"Cor de ataque detectada: {'sim' if attacking else 'não'}"
         )
         self.log(message.replace("\n", " | "))
-        messagebox.showinfo("Training - Testar deteccao", message)
+        messagebox.showinfo("Training - Testar detecção", message)
 
     def test_attack_key(self) -> None:
         self.save_config()
@@ -406,7 +402,7 @@ class TrainingWindow(ttk.Frame):
             return
 
         try:
-            dry_run = bool(self.var_dry_run.get())
+            dry_run = bool(self.app.var_dry_run_enabled.get())
             if not dry_run and not messagebox.askyesno(
                 "Training", f"Modo REAL: isso vai apertar a tecla '{worker.attack_key}' de verdade. Continuar?"
             ):
@@ -418,7 +414,7 @@ class TrainingWindow(ttk.Frame):
         finally:
             worker.teardown()
 
-        self.log(f"Teste da tecla de ataque concluido ('{worker.attack_key}').")
+        self.log(f"Teste da tecla de ataque concluído ('{worker.attack_key}').")
         messagebox.showinfo("Training", f"Tecla de ataque testada ('{worker.attack_key}' - ver log).")
 
     def save_config(self) -> None:
@@ -461,7 +457,7 @@ class TrainingWindow(ttk.Frame):
     def start(self) -> None:
         self.save_config()
         if not is_valid_region(self.cfg.get("battle_list_region")):
-            messagebox.showwarning("Training", "Selecione a regiao da Battle List primeiro.")
+            messagebox.showwarning("Training", "Selecione a região da Battle List primeiro.")
             return
         if not self.cfg.get("training_battle_empty_template"):
             messagebox.showwarning("Training", "Capture o modelo de lista vazia primeiro.")

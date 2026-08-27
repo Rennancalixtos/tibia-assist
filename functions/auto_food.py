@@ -21,8 +21,8 @@ class AutoFoodWorker(BaseWorker):
         self.hwnd = self.config.get("_background_hwnd")
         if not self.hwnd or not win32gui.IsWindow(self.hwnd):
             raise ValueError(
-                "Janela do jogo (modo background) nao configurada ou nao encontrada. "
-                "Configure em Configuracoes > Modo background."
+                "Janela do jogo (modo background) não configurada ou não encontrada. "
+                "Configure em Configurações > Modo background."
             )
         self.confidence = float(self.config.get("confidence", 0.85))
         self.check_interval = float(self.config.get("check_interval", 1.0))
@@ -33,11 +33,11 @@ class AutoFoodWorker(BaseWorker):
         self.log("AutoFood iniciado (clique em segundo plano, sem fallback pro mouse real).")
 
     def teardown(self) -> None:
-        self.log(f"AutoFood finalizado. Comidas usadas na sessao: {self.counter}.")
+        self.log(f"AutoFood finalizado. Comidas usadas na sessão: {self.counter}.")
 
     def _click(self, x: int, y: int) -> None:
         if not win32gui.IsWindow(self.hwnd):
-            raise RuntimeError("Janela do jogo nao encontrada (hwnd invalido).")
+            raise RuntimeError("Janela do jogo não encontrada (hwnd inválido).")
         background_input.post_click(self.hwnd, x, y, "right")
 
     def loop(self) -> None:
@@ -53,7 +53,7 @@ class AutoFoodWorker(BaseWorker):
                 if localizar_na_tela:
                     self._click(localizar_na_tela.x, localizar_na_tela.y)
                     self.bump_counter()
-                    self.log(f"Comeu {nome} (#{self.counter}). Proxima em {self.eat_cooldown:.0f}s.")
+                    self.log(f"Comeu {nome} (#{self.counter}). Próxima em {self.eat_cooldown:.0f}s.")
                     clicked = True
                     break
 

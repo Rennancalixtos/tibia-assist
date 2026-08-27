@@ -14,7 +14,7 @@ class SettingsDialog(tk.Toplevel):
         super().__init__(app)
         self.app = app
 
-        self.title("Configuracoes - EasyF")
+        self.title("Configurações - EasyF")
         self.resizable(False, False)
         self.transient(app)
         self.protocol("WM_DELETE_WINDOW", self.destroy)
@@ -50,7 +50,7 @@ class SettingsDialog(tk.Toplevel):
         bg.pack(fill="x", padx=8, pady=(0, 8))
 
         ttk.Checkbutton(
-            bg, text="Nao usar o mouse real (PostMessage direto pra janela do jogo)",
+            bg, text="Não usar o mouse real (PostMessage direto pra janela do jogo)",
             variable=app.var_background_enabled,
         ).grid(row=0, column=0, columnspan=3, sticky="w", padx=4)
         ttk.Label(bg, text="Janela:").grid(row=1, column=0, sticky="w", padx=4, pady=(4, 0))
@@ -93,8 +93,8 @@ class SettingsDialog(tk.Toplevel):
         )
         ttk.Label(
             prof,
-            text="Um perfil guarda todas as configuracoes das abas, hotkeys e modo background "
-            "(a conta logada nao entra no perfil). Carregar um perfil pede pra reiniciar o app.",
+            text="Um perfil guarda todas as configurações das abas, hotkeys e modo background "
+            "(a conta logada não entra no perfil). Carregar um perfil pede pra reiniciar o app.",
             foreground="#666",
             wraplength=460,
             justify="left",
@@ -133,8 +133,8 @@ class SettingsDialog(tk.Toplevel):
             return
         if not messagebox.askyesno(
             APP_NAME,
-            f"Carregar o perfil {name!r} vai substituir as configuracoes atuais "
-            "(exceto a conta logada). Sera preciso reiniciar o app depois. Continuar?",
+            f"Carregar o perfil {name!r} vai substituir as configurações atuais "
+            "(exceto a conta logada). Será preciso reiniciar o app depois. Continuar?",
         ):
             return
         try:
@@ -144,7 +144,7 @@ class SettingsDialog(tk.Toplevel):
             return
         self.app.apply_profile_data(data)
         messagebox.showinfo(
-            APP_NAME, f"Perfil {name!r} aplicado. Feche e abra o {APP_NAME} de novo para usar as novas configuracoes."
+            APP_NAME, f"Perfil {name!r} aplicado. Feche e abra o {APP_NAME} de novo para usar as novas configurações."
         )
         self.destroy()
 
@@ -153,8 +153,8 @@ class SettingsDialog(tk.Toplevel):
         if not name:
             messagebox.showwarning(APP_NAME, "Selecione um perfil para excluir.")
             return
-        if not messagebox.askyesno(APP_NAME, f"Excluir o perfil {name!r}? Essa acao nao pode ser desfeita."):
+        if not messagebox.askyesno(APP_NAME, f"Excluir o perfil {name!r}? Essa ação não pode ser desfeita."):
             return
         profile_store.delete_profile(name)
-        self.var_profile_status.set(f"Perfil {name!r} excluido.")
+        self.var_profile_status.set(f"Perfil {name!r} excluído.")
         self._refresh_profile_list()

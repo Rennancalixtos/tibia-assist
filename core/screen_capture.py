@@ -51,13 +51,13 @@ class ScreenCapture:
 
 def save_image(path: str, image: np.ndarray) -> None:
     if cv2 is None:
-        raise RuntimeError("opencv-python nao esta instalado")
+        raise RuntimeError("opencv-python não está instalado")
     cv2.imwrite(path, image)
 
 
 def load_image(path: str) -> np.ndarray | None:
     if cv2 is None:
-        raise RuntimeError("opencv-python nao esta instalado")
+        raise RuntimeError("opencv-python não está instalado")
     return cv2.imread(path, cv2.IMREAD_COLOR)
 
 
