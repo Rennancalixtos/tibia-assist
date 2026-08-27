@@ -7,7 +7,6 @@ from PySide6.QtWidgets import QApplication, QHBoxLayout, QMainWindow, QMessageBo
 
 from core.config import RESOURCE_DIR
 from core.version import APP_VERSION
-from gui.qt.components.header import Header
 from gui.qt.components.sidebar import Sidebar
 from gui.qt.controller import APP_NAME, Controller
 from gui.qt.overlays.log_overlay import LogOverlay
@@ -15,21 +14,6 @@ from gui.qt.pages.about import AboutPage
 from gui.qt.pages.dashboard import DashboardPage
 from gui.qt.pages.logs import LogsPage
 from gui.qt.pages.settings import SettingsPage
-
-PAGE_TITLES = {
-    "dashboard": "Dashboard",
-    "settings": "Configurações",
-    "logs": "Logs",
-    "about": "Sobre",
-}
-
-PAGE_SUBTITLES = {
-    "dashboard": "Painel de automação",
-    "settings": "Preferências globais do EasyF",
-    "logs": "Histórico de eventos",
-    "about": "Sobre o EasyF",
-}
-
 
 class MainWindow(QMainWindow):
     def __init__(self, controller: Controller):
@@ -58,10 +42,6 @@ class MainWindow(QMainWindow):
         content_layout.setContentsMargins(24, 20, 24, 0)
         content_layout.setSpacing(12)
         root_layout.addWidget(content, 1)
-
-        self.header = Header(PAGE_TITLES["dashboard"], PAGE_SUBTITLES["dashboard"])
-        self.header.settings_requested.connect(lambda: self._on_nav_changed("settings"))
-        content_layout.addWidget(self.header)
 
         self.log_overlay = LogOverlay()
 
@@ -94,8 +74,6 @@ class MainWindow(QMainWindow):
             return
         self.stack.setCurrentIndex(self._page_order.index(key))
         self.sidebar.set_active(key)
-        self.header.title_label.setText(PAGE_TITLES.get(key, ""))
-        self.header.set_subtitle(PAGE_SUBTITLES.get(key, ""))
 
     def _on_logout_requested(self) -> None:
         if self.controller.logout():

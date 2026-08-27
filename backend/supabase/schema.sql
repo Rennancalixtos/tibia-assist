@@ -55,3 +55,81 @@ alter table public.licenses enable row level security;
 -- continuam sem nenhum acesso.
 grant usage on schema public to service_role;
 grant select, insert, update, delete on public.licenses to service_role;
+
+-- Trial gratis (Discord) e Mercado Pago: 'licenses' ganha 'plan_type' (para
+-- diferenciar assinatura paga de teste gratis concedido manualmente) e
+-- 'payment_provider' (para saber se a ultima cobranca veio do Stripe ou do
+-- Mercado Pago - os dois coexistem, o campo so registra a origem).
+alter table public.licenses add column if not exists plan_type text not null default 'paid';
+alter table public.licenses add column if not exists payment_provider text;
+
+-- Planos fixos vendidos via Mercado Pago (7/15/30 dias). Preco e duracao
+-- ficam so aqui - o endpoint de checkout do Mercado Pago recebe apenas o
+-- plan_id do cliente/bot do Discord e resolve tudo a partir desta tabela,
+-- nunca confia em dias/preco vindos do client.
+create table if not exists public.plans (
+  plan_id text primary key,
+  days integer not null check (days > 0),
+  price_cents integer not null check (price_cents > 0),
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists plans_set_updated_at on public.plans;
+
+create trigger plans_set_updated_at
+  before update on public.plans
+  for each row
+  execute function public.set_licenses_updated_at();
+
+insert into public.plans (plan_id, days, price_cents, active) values
+  ('7d', 7, 1990, true),
+  ('15d', 15, 3490, true),
+  ('30d', 30, 5990, true)
+on conflict (plan_id) do nothing;
+
+-- Mesmo padrao de 'licenses': RLS ligada e sem nenhuma policy bloqueia
+-- anon/authenticated por completo; so o service_role (que ignora RLS) acessa.
+alter table public.plans enable row level security;
+
+grant select, insert, update, delete on public.plans to service_role;
+
+-- Solicitacoes de teste gratis abertas via comando do Discord. Quantidade de
+-- horas concedida e sempre a config global do backend (nunca decidida pelo
+-- bot/cliente); 'status' comeca 'pending' e vira 'approved'/'rejected' quando
+-- um admin decide via botao no Discord. Um usuario so pode ter uma
+-- solicitacao (de qualquer status) por conta, pra nao dar pra pedir de novo.
+create table if not exists public.trial_requests (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null unique references auth.users(id) on delete cascade,
+  discord_user_id text not null,
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  hours_granted integer,
+  reason text,
+  decided_by_discord_id text,
+  requested_at timestamptz not null default now(),
+  decided_at timestamptz
+);
+
+create index if not exists trial_requests_status_idx on public.trial_requests (status);
+
+alter table public.trial_requests enable row level security;
+
+grant select, insert, update, delete on public.trial_requests to service_role;
+
+-- Idempotencia do webhook do Mercado Pago: cada payment_id so pode ser
+-- processado uma vez (webhooks do MP podem reenviar a mesma notificacao).
+-- O webhook insere aqui ANTES de aplicar o upsert em licenses; um
+-- payment_id repetido bate na PK e a notificacao e respondida 200 sem
+-- reprocessar.
+create table if not exists public.mercadopago_payments (
+  payment_id text primary key,
+  user_id uuid not null,
+  plan_id text not null,
+  processed_at timestamptz not null default now()
+);
+
+alter table public.mercadopago_payments enable row level security;
+
+grant select, insert, update, delete on public.mercadopago_payments to service_role;

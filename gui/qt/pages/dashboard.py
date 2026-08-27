@@ -51,13 +51,13 @@ class DashboardPage(QWidget):
         options_title.setObjectName("ModuleCardTitle")
         options_box.addWidget(options_title)
 
-        self.dry_run_check = QCheckBox("Modo teste (dry-run: só loga, não clica/aperta tecla)")
+        self.dry_run_check = QCheckBox("Modo teste (não envia cliques/teclas para o jogo)")
         self.dry_run_check.setChecked(controller.dry_run_enabled)
         self.dry_run_check.toggled.connect(controller.toggle_dry_run)
         options_box.addWidget(self.dry_run_check)
 
         auto_food_row = QHBoxLayout()
-        self.auto_food_check = QCheckBox("Auto Food (comer automaticamente em segundo plano)")
+        self.auto_food_check = QCheckBox("Auto Food")
         self.auto_food_check.toggled.connect(self._on_auto_food_toggled)
         self.auto_food_status_label = QLabel("parado")
         self.auto_food_status_label.setObjectName("StatLabel")
@@ -136,7 +136,6 @@ class DashboardPage(QWidget):
     def _refresh_footer(self) -> None:
         admin_ok = self.controller.admin_ok()
         self.footer_label.setText(
-            f"Input: {self.controller.input_backend_name()}  |  "
             f"Administrador: {'Sim' if admin_ok else 'Não'}  |  "
             f"Escape de emergência: mova o mouse para o canto superior esquerdo da tela."
         )

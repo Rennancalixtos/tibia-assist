@@ -1,0 +1,110 @@
+name: Changelog no Discord
+
+# Dispara em todo push/merge direto na main (nao em tags - quem cuida de tags
+# e o release.yml, que gera o instalador via PyInstaller). Aqui so lemos o
+# historico de commits e mandamos um resumo pro canal de atualizacoes do
+# Discord via webhook - nada e escrito de volta no repo.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Le a versao atual do app (core/version.py)
+        id: app_version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(grep -oP '(?<=APP_VERSION = ")[^"]+' core/version.py)
+          echo "Versao lida: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Gera o changelog e posta no Discord
+        shell: bash
+        env:
+          APP_VERSION: ${{ steps.app_version.outputs.version }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+          # Configurar manualmente em Settings > Secrets and variables > Actions
+          # do repositorio, com esse nome exato: DISCORD_UPDATES_WEBHOOK_URL
+          # (webhook do canal "atualizacoes" no Discord).
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_UPDATES_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
+
+          if [ -n "$PREV_TAG" ]; then
+            echo "Ultima tag alcancavel a partir de main: $PREV_TAG. Range: ${PREV_TAG}..HEAD"
+            RANGE="${PREV_TAG}..HEAD"
+          elif [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+            echo "Nenhuma tag encontrada ainda. Range baseado no proprio push: ${BEFORE_SHA}..${CURRENT_SHA}"
+            RANGE="${BEFORE_SHA}..${CURRENT_SHA}"
+          else
+            echo "Nenhuma tag e nenhum 'before' valido (ex: primeiro push do branch). Usando fallback dos ultimos 20 commits."
+            RANGE=""
+          fi
+
+          if [ -n "$RANGE" ]; then
+            COMMITS=$(git log "$RANGE" --no-merges --pretty=format:'- `%h` %s (%an)' || true)
+          else
+            COMMITS=$(git log -n 20 --no-merges --pretty=format:'- `%h` %s (%an)' || true)
+          fi
+
+          if [ -z "$COMMITS" ]; then
+            echo "Nenhum commit novo, pulando post."
+            exit 0
+          fi
+
+          TOTAL_COMMITS=$(printf '%s\n' "$COMMITS" | grep -c '^-')
+          echo "Total de commits no changelog: $TOTAL_COMMITS"
+
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
+            echo "::warning::DISCORD_UPDATES_WEBHOOK_URL nao esta configurado (Settings > Secrets and variables > Actions do repositorio). Pulando post no Discord sem falhar o job."
+            exit 0
+          fi
+
+          DESCRIPTION_LIMIT=4096
+          DESCRIPTION="$COMMITS"
+
+          if [ "${#COMMITS}" -gt "$DESCRIPTION_LIMIT" ]; then
+            RESERVE=80
+            MAX_LEN=$((DESCRIPTION_LIMIT - RESERVE))
+            TRUNCATED="${COMMITS:0:$MAX_LEN}"
+            TRUNCATED="${TRUNCATED%$'\n'*}"
+            SHOWN_COMMITS=$(printf '%s\n' "$TRUNCATED" | grep -c '^-')
+            REMAINING=$((TOTAL_COMMITS - SHOWN_COMMITS))
+            DESCRIPTION="${TRUNCATED}"$'\n'"...e mais ${REMAINING} commits"
+            echo "Changelog truncado: mostrando $SHOWN_COMMITS de $TOTAL_COMMITS commits (limite de descricao do embed do Discord)."
+          fi
+
+          TITLE="Atualizações - EasyF v${APP_VERSION}"
+
+          PAYLOAD=$(jq -n \
+            --arg title "$TITLE" \
+            --arg desc "$DESCRIPTION" \
+            '{embeds: [{title: $title, description: $desc, color: 5793266}]}')
+
+          HTTP_STATUS=$(curl -sS -o /tmp/discord_response.txt -w '%{http_code}' \
+            -H "Content-Type: application/json" \
+            -X POST \
+            -d "$PAYLOAD" \
+            "$DISCORD_WEBHOOK_URL")
+
+          if [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "Falha ao postar no Discord (HTTP $HTTP_STATUS):"
+            cat /tmp/discord_response.txt
+            exit 1
+          fi
+
+          echo "Changelog postado no Discord com sucesso ($TOTAL_COMMITS commits)."
