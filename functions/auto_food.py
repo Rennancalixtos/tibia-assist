@@ -11,7 +11,7 @@ from core.worker import BaseWorker
 
 pg.useImageNotFoundException(False)
 
-ICON_NAMES = ["meat1", "meat2", "meat3", "meat4", "meat5"]
+ICON_NAMES = ["meat1", "meat2", "meat3", "meat4", "meat5", "whitemushrooms", "ham1"]
 
 
 class AutoFoodWorker(BaseWorker):
@@ -30,11 +30,9 @@ class AutoFoodWorker(BaseWorker):
         self.icons = {
             name: os.path.join(RESOURCE_DIR, "img", "food", f"{name}.png") for name in ICON_NAMES
         }
-        self.register_with_coordinator("auto_food")
         self.log("AutoFood iniciado (clique em segundo plano, sem fallback pro mouse real).")
 
     def teardown(self) -> None:
-        self.unregister_from_coordinator()
         self.log(f"AutoFood finalizado. Comidas usadas na sessao: {self.counter}.")
 
     def _click(self, x: int, y: int) -> None:
@@ -44,7 +42,7 @@ class AutoFoodWorker(BaseWorker):
 
     def loop(self) -> None:
         while not self.stopped:
-            if not self.wait_for_higher_priority():
+            if not self.wait_while_paused():
                 return
 
             clicked = False
