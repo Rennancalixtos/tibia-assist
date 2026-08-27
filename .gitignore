@@ -8,3 +8,4 @@ build/
 dist/
 *.spec
 !EasyF.spec
+.claude/scheduled_tasks.lock
