@@ -11,7 +11,7 @@ from core.worker import BaseWorker
 
 pg.useImageNotFoundException(False)
 
-ICON_NAMES = ["meat1", "meat2", "meat3", "meat4", "meat5", "whitemushrooms", "ham1"]
+ICON_NAMES = ["meat1", "meat2", "meat3", "meat4", "meat5", "whitemushrooms", "ham1", "ham2", "ham3", "ham4", "ham5", "fish1"]
 
 
 class AutoFoodWorker(BaseWorker):
