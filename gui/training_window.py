@@ -9,7 +9,15 @@ from core.screen_capture import ScreenCapture, is_valid_region, save_image
 from functions.rune_maker import OCRUnavailable, configure_tesseract, read_number
 from functions.training import TrainingWorker
 from gui.mana_overlay import ManaOverlay
-from gui.widgets import ScrollableFrame, add_field, add_hotkey_field, parse_float, parse_int, region_text
+from gui.widgets import (
+    ScrollableFrame,
+    add_field,
+    add_hotkey_field,
+    add_info_icon,
+    parse_float,
+    parse_int,
+    region_text,
+)
 
 
 class TrainingWindow(ttk.Frame):
@@ -70,11 +78,8 @@ class TrainingWindow(ttk.Frame):
         self.battle_overlay = ManaOverlay(self.app)
         self.battle_overlay.configure_region(self.cfg.get("battle_list_region"))
 
-        scroll = ScrollableFrame(self)
-        scroll.pack(fill="both", expand=True)
-        self.body = scroll.body
+        self.body = self
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=1)
 
         self._build()
 
@@ -141,31 +146,25 @@ class TrainingWindow(ttk.Frame):
             box_list, text="Selecionar região da Battle List...", command=self.pick_battle_list_region
         ).grid(row=0, column=0, padx=4, pady=6, sticky="w")
         ttk.Label(box_list, textvariable=self.var_region).grid(row=0, column=1, sticky="w")
-        ttk.Label(
-            box_list,
-            text="Arraste só pela LISTA de criaturas (comece no topo da 1a linha - sem "
+        add_info_icon(
+            box_list, 0, 2,
+            "Arraste só pela LISTA de criaturas (comece no topo da 1ª linha - sem "
             "pegar o título/ícones/dropdown de ordenação).",
-            foreground="#666",
-            wraplength=580,
-            justify="left",
-        ).grid(row=1, column=0, columnspan=2, sticky="w", padx=4)
+        )
 
         ttk.Button(
-            box_list, text="Capturar modelo de lista vazia (cabeçalho + 1a linha)...",
+            box_list, text="Capturar modelo de lista vazia (cabeçalho + 1ª linha)...",
             command=self.capture_empty_template,
-        ).grid(row=2, column=0, padx=4, pady=6, sticky="w")
-        ttk.Label(box_list, textvariable=self.var_empty_template).grid(row=2, column=1, sticky="w")
-        ttk.Label(
-            box_list,
-            text="Com a lista VAZIA no jogo, arraste incluindo o título da janela 'Battle' + a "
-            "1a linha (vazia) logo abaixo.",
-            foreground="#666",
-            wraplength=580,
-            justify="left",
-        ).grid(row=3, column=0, columnspan=2, sticky="w", padx=4)
+        ).grid(row=1, column=0, padx=4, pady=6, sticky="w")
+        ttk.Label(box_list, textvariable=self.var_empty_template).grid(row=1, column=1, sticky="w")
+        add_info_icon(
+            box_list, 1, 2,
+            "Com a lista VAZIA no jogo, arraste incluindo o título da janela 'Battle' + a "
+            "1ª linha (vazia) logo abaixo.",
+        )
 
         self.entry_empty_threshold = add_field(
-            box_list, 4, "Confiança mínima do modelo vazio (%)", self.var_empty_threshold, 8, "0 a 100 (padrão 85)"
+            box_list, 2, "Confiança mínima do modelo vazio (%)", self.var_empty_threshold, 8, "0 a 100 (padrão 85)"
         )
 
         box_color = ttk.LabelFrame(parent, text="2. Cor de ataque (nome da criatura)")
@@ -178,28 +177,22 @@ class TrainingWindow(ttk.Frame):
         ttk.Entry(color_row, textvariable=self.var_color_b, width=5).pack(side="left")
         add_field(box_color, 1, "Tolerância por canal", self.var_color_tolerance, 8, "0 a 255 (padrão 6)")
         add_field(box_color, 2, "Pixels mínimos", self.var_color_min_pixels, 8, "padrão 3")
-        ttk.Label(
-            box_color,
-            text="Padrão RGB 254,0,0 (vermelho puro do nome em ATAQUE) - o mesmo mecanismo usado no Target.",
-            foreground="#666",
-            wraplength=580,
-            justify="left",
-        ).grid(row=3, column=0, columnspan=3, sticky="w", padx=4)
+        add_info_icon(
+            box_color, 0, 3,
+            "Padrão RGB 254,0,0 (vermelho puro do nome em ATAQUE) - o mesmo mecanismo usado no Target.",
+        )
 
         box_key = ttk.LabelFrame(parent, text="3. Tecla de ataque")
         box_key.grid(row=2, column=0, sticky="ew", pady=4)
         add_hotkey_field(box_key, 0, "Tecla de ataque", self.var_attack_key, 10, "ex: space")
+        add_info_icon(
+            box_key, 0, 3,
+            "Precisa estar configurada DENTRO do Tibia primeiro (Options > Hotkeys > "
+            "Attack) para atacar a criatura selecionada.",
+        )
         add_field(
             box_key, 1, "Delay após apertar (s)", self.var_attack_check_delay, 8, "aguarda antes de conferir a cor"
         )
-        ttk.Label(
-            box_key,
-            text="Precisa estar configurada DENTRO do Tibia primeiro (Options > Hotkeys > "
-            "Attack) para atacar a criatura selecionada.",
-            foreground="#a33",
-            wraplength=580,
-            justify="left",
-        ).grid(row=2, column=0, columnspan=3, sticky="w", padx=4, pady=(2, 0))
 
         box_rate = ttk.LabelFrame(parent, text="4. Ritmo")
         box_rate.grid(row=3, column=0, sticky="ew", pady=4)
@@ -213,6 +206,12 @@ class TrainingWindow(ttk.Frame):
         self.entry_creature_name = add_field(
             self.box_target, 0, "Nome do monstro de treino", self.var_creature_name, 24, "ex: Training Monk"
         )
+        add_info_icon(
+            self.box_target, 0, 3,
+            "O nome é lido via OCR na região inteira da Battle List, ignorando maiúsculas "
+            "e pequenas falhas de leitura - assim o bot só ataca enquanto o monstro certo "
+            "estiver na lista.",
+        )
         self.entry_name_threshold = add_field(
             self.box_target, 1, "Similaridade mínima do nome (%)", self.var_name_threshold, 8, "tolerante a falhas de OCR"
         )
@@ -222,15 +221,6 @@ class TrainingWindow(ttk.Frame):
         self.entry_missing_interval = add_field(
             self.box_target, 3, "Intervalo entre tentativas (s)", self.var_missing_retry_interval, 8, "ex: 2.0"
         )
-        ttk.Label(
-            self.box_target,
-            text="O nome é lido via OCR na região inteira da Battle List, ignorando maiúsculas "
-            "e pequenas falhas de leitura - assim o bot só ataca enquanto o monstro certo "
-            "estiver na lista.",
-            foreground="#666",
-            wraplength=600,
-            justify="left",
-        ).grid(row=4, column=0, columnspan=2, sticky="w", padx=4)
 
         self.box_spell = ttk.LabelFrame(parent, text="6. Magia de ataque (opcional, treino de magic level)")
         self.box_spell.grid(row=5, column=0, sticky="ew", pady=4)
@@ -263,18 +253,15 @@ class TrainingWindow(ttk.Frame):
         box_afk.grid(row=6, column=0, sticky="ew", pady=4)
         ttk.Checkbutton(
             box_afk, text="Enviar ação anti-AFK periodicamente", variable=self.var_afk_enabled
-        ).grid(row=0, column=0, columnspan=3, sticky="w", padx=4, pady=3)
+        ).grid(row=0, column=0, columnspan=2, sticky="w", padx=4, pady=3)
+        add_info_icon(
+            box_afk, 0, 2,
+            "Fallback de 'movimento leve' (aperta uma tecla e a oposta em seguida) caso a "
+            "tecla de ataque em loop não conte como atividade no seu servidor.",
+        )
         add_field(box_afk, 1, "Intervalo (minutos)", self.var_afk_interval, 8, "ex: 10")
         add_hotkey_field(box_afk, 2, "Tecla de movimento (ida)", self.var_afk_key_a, 10, "ex: up")
         add_hotkey_field(box_afk, 3, "Tecla de movimento (volta)", self.var_afk_key_b, 10, "ex: down")
-        ttk.Label(
-            box_afk,
-            text="Fallback de 'movimento leve' (aperta uma tecla e a oposta em seguida) caso a "
-            "tecla de ataque em loop não conte como atividade no seu servidor.",
-            foreground="#666",
-            wraplength=680,
-            justify="left",
-        ).grid(row=4, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 4))
 
         ttk.Label(
             parent,

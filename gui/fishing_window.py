@@ -17,7 +17,7 @@ from functions.auto_fishing import (
     median_brightness,
     sample_hsv_range,
 )
-from gui.widgets import ScrollableFrame, add_field, parse_float, parse_int, region_text
+from gui.widgets import ScrollableFrame, add_field, add_info_icon, parse_float, parse_int, region_text
 
 BUTTON_LABELS = {"right": "direito", "left": "esquerdo"}
 BUTTON_VALUES = {label: value for value, label in BUTTON_LABELS.items()}
@@ -64,11 +64,8 @@ class FishingWindow(ttk.Frame):
         )
         self.var_effective_hsv = tk.StringVar(value="HSV efetivo atual: -")
 
-        scroll = ScrollableFrame(self)
-        scroll.pack(fill="both", expand=True)
-        self.body = scroll.body
+        self.body = self
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=1)
 
         self._build()
 
@@ -144,9 +141,7 @@ class FishingWindow(ttk.Frame):
             width=10,
         )
         combo.grid(row=0, column=1, sticky="w", padx=4)
-        ttk.Label(
-            box_detect, text="hsv = cor da água | template = imagem de referência", foreground="#666"
-        ).grid(row=0, column=2, sticky="w", padx=4)
+        add_info_icon(box_detect, 0, 2, "hsv = cor da água | template = imagem de referência")
 
         add_field(box_detect, 1, "HSV mínimo", self.var_hsv_lower, 16, "H, S, V")
         add_field(box_detect, 2, "HSV máximo", self.var_hsv_upper, 16, "H, S, V")
@@ -193,11 +188,9 @@ class FishingWindow(ttk.Frame):
             state="readonly",
             width=10,
         ).grid(row=0, column=1, sticky="w", padx=4)
-        ttk.Label(
-            box_click,
-            text="obs: a vara (aba 1) usa sempre o botão direito - isso aqui é só pra água",
-            foreground="#666",
-        ).grid(row=0, column=2, sticky="w", padx=4)
+        add_info_icon(
+            box_click, 0, 2, "A vara sempre usa o botão direito - isso aqui é só pra água."
+        )
 
         add_field(box_click, 1, "Delay mínimo (s)", self.var_delay_min, 8, "ex: 1.8")
         add_field(box_click, 2, "Delay máximo (s)", self.var_delay_max, 8, "ex: 3.2")

@@ -15,8 +15,9 @@ from core.license import LicenseManager
 from core.version import APP_VERSION
 from functions.auto_food import AutoFoodWorker
 from gui.license_dialog import ensure_license
+from gui.log_overlay import LogOverlay
 from gui.settings_dialog import SettingsDialog
-from gui.widgets import LogPanel
+from gui.widgets import LogPanel, ScrollableFrame
 
 try:
     import keyboard
@@ -39,13 +40,15 @@ TAB_LABELS = {
     "auto_food": "AutoFood",
 }
 
+SECTION_ORDER = ("fishing", "runemaker", "target", "training")
+
 
 class App(tk.Tk):
     def __init__(self, config_store: Config, license_manager: LicenseManager) -> None:
         super().__init__()
         self.title(f"{APP_NAME} {APP_VERSION}")
-        self.geometry("760x760")
-        self.minsize(700, 640)
+        self.geometry("1040x560")
+        self.minsize(900, 420)
         self._apply_app_icon()
 
         self.config_store = config_store
@@ -92,6 +95,10 @@ class App(tk.Tk):
         dry_run_cfg = self.config_store.section("dry_run")
         self.var_dry_run_enabled = tk.BooleanVar(value=bool(dry_run_cfg.get("enabled", False)))
 
+        log_cfg = self.config_store.section("log")
+        self.var_log_overlay_enabled = tk.BooleanVar(value=bool(log_cfg.get("overlay_enabled", True)))
+        self.var_log_panel_enabled = tk.BooleanVar(value=bool(log_cfg.get("panel_enabled", False)))
+
         self._settings_dialog: SettingsDialog | None = None
 
     def open_settings(self) -> None:
@@ -115,8 +122,13 @@ class App(tk.Tk):
         ).pack(side="right", padx=(0, 8))
         self._tick_account_info()
 
-        notebook = ttk.Notebook(self)
-        notebook.pack(fill="both", expand=True, padx=8, pady=4)
+        sections_scroll = ScrollableFrame(self)
+        sections_scroll.pack(fill="both", expand=True, padx=8, pady=4)
+        sections_body = sections_scroll.body
+
+        GRID_COLUMNS = 2
+        for col in range(GRID_COLUMNS):
+            sections_body.columnconfigure(col, weight=1, uniform="section")
 
         from gui.fishing_window import FishingWindow
         from gui.runemaker_window import RuneMakerWindow
@@ -124,15 +136,17 @@ class App(tk.Tk):
         from gui.training_window import TrainingWindow
 
         self.tabs = {
-            "fishing": FishingWindow(notebook, self),
-            "runemaker": RuneMakerWindow(notebook, self),
-            "target": TargetWindow(notebook, self),
-            "training": TrainingWindow(notebook, self),
+            "fishing": FishingWindow(sections_body, self),
+            "runemaker": RuneMakerWindow(sections_body, self),
+            "target": TargetWindow(sections_body, self),
+            "training": TrainingWindow(sections_body, self),
         }
-        notebook.add(self.tabs["fishing"], text="AutoFishing")
-        notebook.add(self.tabs["runemaker"], text="RuneMaker")
-        notebook.add(self.tabs["target"], text="Target")
-        notebook.add(self.tabs["training"], text="Training")
+        for i, key in enumerate(SECTION_ORDER):
+            row, col = (i // GRID_COLUMNS) * 2, i % GRID_COLUMNS
+            ttk.Label(
+                sections_body, text=TAB_LABELS[key], font=("Segoe UI", 12, "bold")
+            ).grid(row=row, column=col, sticky="w", padx=4, pady=(12 if row else 4, 2))
+            self.tabs[key].grid(row=row + 1, column=col, sticky="new", padx=4)
 
         toggles_bar = ttk.Frame(self, padding=(8, 0, 8, 4))
         toggles_bar.pack(fill="x")
@@ -158,11 +172,36 @@ class App(tk.Tk):
             side="left", padx=(8, 0)
         )
 
-        self.shared_log = LogPanel(self, title="Log", height=10)
-        self.shared_log.pack(fill="x", padx=8, pady=(0, 4))
+        log_overlay_row = ttk.Frame(toggles_bar)
+        log_overlay_row.pack(fill="x")
+        ttk.Checkbutton(
+            log_overlay_row,
+            text="Logs na tela do jogo",
+            variable=self.var_log_overlay_enabled,
+            command=self._toggle_log_overlay,
+        ).pack(side="left")
 
-        footer = ttk.Frame(self, padding=(8, 4))
+        log_panel_row = ttk.Frame(toggles_bar)
+        log_panel_row.pack(fill="x")
+        ttk.Checkbutton(
+            log_panel_row,
+            text="Mostrar logs na aplicação",
+            variable=self.var_log_panel_enabled,
+            command=self._toggle_log_panel,
+        ).pack(side="left")
+
+        self.log_overlay = LogOverlay(self)
+        if self.var_log_overlay_enabled.get():
+            self.log_overlay.show()
+
+        self.shared_log = LogPanel(self, title="Log", height=10)
+
+        self.footer = ttk.Frame(self, padding=(8, 4))
+        footer = self.footer
         footer.pack(fill="x")
+
+        if self.var_log_panel_enabled.get():
+            self.shared_log.pack(fill="x", padx=8, pady=(0, 4), before=footer)
         ttk.Label(footer, text=DISCLAIMER, foreground="#a33", wraplength=720, justify="left").pack(
             anchor="w"
         )
@@ -333,6 +372,22 @@ class App(tk.Tk):
         self.config_store.section("dry_run")["enabled"] = bool(self.var_dry_run_enabled.get())
         self.config_store.save()
 
+    def _toggle_log_overlay(self) -> None:
+        if self.var_log_overlay_enabled.get():
+            self.log_overlay.show()
+        else:
+            self.log_overlay.hide()
+        self.config_store.section("log")["overlay_enabled"] = bool(self.var_log_overlay_enabled.get())
+        self.config_store.save()
+
+    def _toggle_log_panel(self) -> None:
+        if self.var_log_panel_enabled.get():
+            self.shared_log.pack(fill="x", padx=8, pady=(0, 4), before=self.footer)
+        else:
+            self.shared_log.pack_forget()
+        self.config_store.section("log")["panel_enabled"] = bool(self.var_log_panel_enabled.get())
+        self.config_store.save()
+
     def _toggle_auto_food(self) -> None:
         if self.var_auto_food_enabled.get():
             self.start_worker("auto_food", AutoFoodWorker, {})
@@ -465,7 +520,9 @@ class App(tk.Tk):
 
     def log(self, message: str, source: str = "app") -> None:
         label = TAB_LABELS.get(source, source)
-        self.shared_log.append(f"[{label}] {message}")
+        line = f"[{label}] {message}"
+        self.shared_log.append(line)
+        self.log_overlay.append(line)
 
     def _pump_events(self) -> None:
         try:

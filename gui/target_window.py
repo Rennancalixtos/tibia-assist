@@ -48,11 +48,8 @@ class TargetWindow(ttk.Frame):
         self.var_status = tk.StringVar(value="parado")
         self.var_counter = tk.StringVar(value="0")
 
-        scroll = ScrollableFrame(self)
-        scroll.pack(fill="both", expand=True)
-        self.body = scroll.body
+        self.body = self
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=1)
 
         self._build()
 

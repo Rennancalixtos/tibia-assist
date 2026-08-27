@@ -79,6 +79,10 @@ DEFAULTS: dict[str, Any] = {
     "dry_run": {
         "enabled": False,
     },
+    "log": {
+        "overlay_enabled": True,
+        "panel_enabled": False,
+    },
     "runemaker": {
         "spell_hotkey": "f2",
         "blank_slot": None,

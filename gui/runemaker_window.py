@@ -8,7 +8,15 @@ from core.config import ASSETS_DIR
 from core.screen_capture import ScreenCapture, is_valid_region, save_image
 from functions.rune_maker import OCRUnavailable, RuneMakerWorker, configure_tesseract, read_number
 from gui.mana_overlay import ManaOverlay
-from gui.widgets import ScrollableFrame, add_field, add_hotkey_field, parse_float, parse_int, region_text
+from gui.widgets import (
+    ScrollableFrame,
+    add_field,
+    add_hotkey_field,
+    add_info_icon,
+    parse_float,
+    parse_int,
+    region_text,
+)
 
 MODE_LABELS = {"craft": "Criar runas", "mana_training": "ManaTraining"}
 MODE_VALUES = {label: value for value, label in MODE_LABELS.items()}
@@ -47,11 +55,8 @@ class RuneMakerWindow(ttk.Frame):
         )
         self.var_counter_label = tk.StringVar(value="Runas criadas:")
 
-        scroll = ScrollableFrame(self)
-        scroll.pack(fill="both", expand=True)
-        self.body = scroll.body
+        self.body = self
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=1)
 
         self.mana_overlay = ManaOverlay(self.app)
         self.mana_overlay.configure_region(self.cfg.get("mana_region"))
@@ -209,11 +214,10 @@ class RuneMakerWindow(ttk.Frame):
             box_ocr, text="Selecionar onde exibir o valor da mana...", command=self.pick_mana_display_point
         ).grid(row=3, column=0, columnspan=2, padx=4, pady=(0, 6), sticky="w")
         ttk.Label(box_ocr, textvariable=self.var_mana_point).grid(row=3, column=2, sticky="w", padx=4)
-        ttk.Label(
-            box_ocr,
-            text="Overlay sobre a tela do jogo: marca a região acima e mostra o valor lido nesse ponto.",
-            foreground="#666",
-        ).grid(row=4, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 4))
+        add_info_icon(
+            box_ocr, 3, 3,
+            "Overlay sobre a tela do jogo: marca a região acima e mostra o valor lido nesse ponto.",
+        )
 
         box_rate = ttk.LabelFrame(parent, text="4. Ritmo")
         box_rate.grid(row=4, column=0, sticky="ew", pady=4)
