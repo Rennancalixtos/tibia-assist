@@ -17,7 +17,7 @@ from functions.auto_fishing import (
     median_brightness,
     sample_hsv_range,
 )
-from gui.widgets import ScrollableFrame, add_field, parse_float, parse_int, region_text
+from gui.widgets import ScrollableFrame, add_field, add_info_icon, parse_float, parse_int, region_text
 
 BUTTON_LABELS = {"right": "direito", "left": "esquerdo"}
 BUTTON_VALUES = {label: value for value, label in BUTTON_LABELS.items()}
@@ -64,11 +64,8 @@ class FishingWindow(ttk.Frame):
         )
         self.var_effective_hsv = tk.StringVar(value="HSV efetivo atual: -")
 
-        scroll = ScrollableFrame(self)
-        scroll.pack(fill="both", expand=True)
-        self.body = scroll.body
+        self.body = self
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=1)
 
         self._build()
 
@@ -85,7 +82,7 @@ class FishingWindow(ttk.Frame):
     def _build(self) -> None:
         body = self.body
 
-        box_run = ttk.LabelFrame(body, text="1. Execucao")
+        box_run = ttk.LabelFrame(body, text="1. Execução")
         box_run.grid(row=0, column=0, sticky="ew", pady=4)
         self.btn_start = ttk.Button(box_run, text="Iniciar", command=self.start)
         self.btn_start.grid(row=0, column=0, padx=4, pady=6)
@@ -100,7 +97,7 @@ class FishingWindow(ttk.Frame):
         ttk.Label(box_run, textvariable=self.var_status, font=("Segoe UI", 9, "bold")).grid(
             row=1, column=1, sticky="w"
         )
-        ttk.Label(box_run, text="Lances na sessao:").grid(row=1, column=2, sticky="e", padx=4)
+        ttk.Label(box_run, text="Lances na sessão:").grid(row=1, column=2, sticky="e", padx=4)
         ttk.Label(box_run, textvariable=self.var_counter, font=("Segoe UI", 9, "bold")).grid(
             row=1, column=3, sticky="w"
         )
@@ -119,20 +116,20 @@ class FishingWindow(ttk.Frame):
         box_rod = ttk.LabelFrame(parent, text="1. Vara de pescar")
         box_rod.grid(row=0, column=0, sticky="ew", pady=4)
         box_rod.columnconfigure(1, weight=1)
-        ttk.Button(box_rod, text="Selecionar posicao da vara...", command=self.pick_rod_slot).grid(
+        ttk.Button(box_rod, text="Selecionar posição da vara...", command=self.pick_rod_slot).grid(
             row=0, column=0, padx=4, pady=6
         )
         ttk.Label(box_rod, textvariable=self.var_rod_slot).grid(row=0, column=1, sticky="w")
 
-        box_region = ttk.LabelFrame(parent, text="2. Regiao monitorada (lago)")
+        box_region = ttk.LabelFrame(parent, text="2. Região monitorada (lago)")
         box_region.grid(row=1, column=0, sticky="ew", pady=4)
         box_region.columnconfigure(1, weight=1)
-        ttk.Button(box_region, text="Selecionar regiao...", command=self.pick_region).grid(
+        ttk.Button(box_region, text="Selecionar região...", command=self.pick_region).grid(
             row=0, column=0, padx=4, pady=6
         )
         ttk.Label(box_region, textvariable=self.var_region).grid(row=0, column=1, sticky="w")
 
-        box_detect = ttk.LabelFrame(parent, text="3. Deteccao de agua")
+        box_detect = ttk.LabelFrame(parent, text="3. Detecção de água")
         box_detect.grid(row=2, column=0, sticky="ew", pady=4)
 
         ttk.Label(box_detect, text="Modo").grid(row=0, column=0, sticky="w", padx=4, pady=3)
@@ -144,38 +141,36 @@ class FishingWindow(ttk.Frame):
             width=10,
         )
         combo.grid(row=0, column=1, sticky="w", padx=4)
-        ttk.Label(
-            box_detect, text="hsv = cor da agua | template = imagem de referencia", foreground="#666"
-        ).grid(row=0, column=2, sticky="w", padx=4)
+        add_info_icon(box_detect, 0, 2, "hsv = cor da água | template = imagem de referência")
 
-        add_field(box_detect, 1, "HSV minimo", self.var_hsv_lower, 16, "H, S, V")
-        add_field(box_detect, 2, "HSV maximo", self.var_hsv_upper, 16, "H, S, V")
-        add_field(box_detect, 3, "Area minima", self.var_min_area, 8, "px de agua na regiao")
+        add_field(box_detect, 1, "HSV mínimo", self.var_hsv_lower, 16, "H, S, V")
+        add_field(box_detect, 2, "HSV máximo", self.var_hsv_upper, 16, "H, S, V")
+        add_field(box_detect, 3, "Área mínima", self.var_min_area, 8, "px de água na região")
         add_field(box_detect, 4, "Threshold template", self.var_threshold, 8, "0.0 a 1.0")
         add_field(
-            box_detect, 5, "Tamanho do SQM (px)", self.var_tile_size, 8, "32 = tile padrao sem zoom"
+            box_detect, 5, "Tamanho do SQM (px)", self.var_tile_size, 8, "32 = tile padrão sem zoom"
         )
         add_field(
-            box_detect, 6, "Cobertura minima do SQM (%)", self.var_tile_coverage, 8, "0 a 100"
+            box_detect, 6, "Cobertura mínima do SQM (%)", self.var_tile_coverage, 8, "0 a 100"
         )
 
         ttk.Checkbutton(
-            box_detect, text="Recalibracao automatica periodica (EMA)", variable=self.var_auto_recalibrate
+            box_detect, text="Recalibração automática periódica (EMA)", variable=self.var_auto_recalibrate
         ).grid(row=7, column=0, sticky="w", padx=4, pady=3)
-        add_field(box_detect, 8, "Intervalo de recalibracao (min)", self.var_recalibrate_interval, 8, "ex: 15")
+        add_field(box_detect, 8, "Intervalo de recalibração (min)", self.var_recalibrate_interval, 8, "ex: 15")
         ttk.Label(box_detect, textvariable=self.var_effective_hsv, foreground="#666").grid(
             row=9, column=0, columnspan=3, sticky="w", padx=4, pady=(2, 4)
         )
 
         actions = ttk.Frame(box_detect)
         actions.grid(row=10, column=0, columnspan=3, sticky="w", pady=(6, 6))
-        ttk.Button(actions, text="Calibrar cor da agua...", command=self.calibrate_color).pack(
+        ttk.Button(actions, text="Calibrar cor da água...", command=self.calibrate_color).pack(
             side="left", padx=4
         )
         ttk.Button(actions, text="Capturar template...", command=self.capture_template).pack(
             side="left", padx=4
         )
-        ttk.Button(actions, text="Testar deteccao", command=self.test_detection).pack(
+        ttk.Button(actions, text="Testar detecção", command=self.test_detection).pack(
             side="left", padx=4
         )
         ttk.Button(actions, text="Visualizar grid (SQM)...", command=self.preview_grid).pack(
@@ -185,7 +180,7 @@ class FishingWindow(ttk.Frame):
         box_click = ttk.LabelFrame(parent, text="4. Clique e ritmo")
         box_click.grid(row=3, column=0, sticky="ew", pady=4)
 
-        ttk.Label(box_click, text="Botao na agua").grid(row=0, column=0, sticky="w", padx=4, pady=3)
+        ttk.Label(box_click, text="Botão na água").grid(row=0, column=0, sticky="w", padx=4, pady=3)
         ttk.Combobox(
             box_click,
             textvariable=self.var_button,
@@ -193,38 +188,36 @@ class FishingWindow(ttk.Frame):
             state="readonly",
             width=10,
         ).grid(row=0, column=1, sticky="w", padx=4)
-        ttk.Label(
-            box_click,
-            text="obs: a vara (aba 1) usa sempre o botao direito - isso aqui e so pra agua",
-            foreground="#666",
-        ).grid(row=0, column=2, sticky="w", padx=4)
+        add_info_icon(
+            box_click, 0, 2, "A vara sempre usa o botão direito - isso aqui é só pra água."
+        )
 
-        add_field(box_click, 1, "Delay minimo (s)", self.var_delay_min, 8, "ex: 1.8")
-        add_field(box_click, 2, "Delay maximo (s)", self.var_delay_max, 8, "ex: 3.2")
-        add_field(box_click, 3, "Variacao do clique (px)", self.var_jitter, 8, "+/- pixels")
+        add_field(box_click, 1, "Delay mínimo (s)", self.var_delay_min, 8, "ex: 1.8")
+        add_field(box_click, 2, "Delay máximo (s)", self.var_delay_max, 8, "ex: 3.2")
+        add_field(box_click, 3, "Variação do clique (px)", self.var_jitter, 8, "+/- pixels")
         add_field(box_click, 4, "Limite de lances", self.var_max_casts, 8, "0 = ilimitado")
         ttk.Checkbutton(
             box_click,
-            text="Sortear entre as tiles de agua encontradas",
+            text="Sortear entre as tiles de água encontradas",
             variable=self.var_randomize,
         ).grid(row=5, column=0, columnspan=3, sticky="w", padx=4, pady=3)
 
-        box_break = ttk.LabelFrame(parent, text="5. Pausas periodicas (descanso)")
+        box_break = ttk.LabelFrame(parent, text="5. Pausas periódicas (descanso)")
         box_break.grid(row=4, column=0, sticky="ew", pady=4)
         ttk.Checkbutton(
-            box_break, text="Ativar pausas periodicas", variable=self.var_break_enabled
+            box_break, text="Ativar pausas periódicas", variable=self.var_break_enabled
         ).grid(row=0, column=0, columnspan=3, sticky="w", padx=4, pady=3)
         add_field(
-            box_break, 1, "Pesca no minimo (s)", self.var_break_interval_min, 8, "antes de considerar pausa"
+            box_break, 1, "Pesca no mínimo (s)", self.var_break_interval_min, 8, "antes de considerar pausa"
         )
         add_field(
-            box_break, 2, "Pesca no maximo (s)", self.var_break_interval_max, 8, "ex: 300 = ate 5 min"
+            box_break, 2, "Pesca no máximo (s)", self.var_break_interval_max, 8, "ex: 300 = até 5 min"
         )
         add_field(
-            box_break, 3, "Pausa minima (s)", self.var_break_duration_min, 8, "duracao minima do descanso"
+            box_break, 3, "Pausa mínima (s)", self.var_break_duration_min, 8, "duração mínima do descanso"
         )
         add_field(
-            box_break, 4, "Pausa maxima (s)", self.var_break_duration_max, 8, "ex: 120 = ate 2 min"
+            box_break, 4, "Pausa máxima (s)", self.var_break_duration_max, 8, "ex: 120 = até 2 min"
         )
 
         actions_bar = ttk.Frame(parent)
@@ -235,23 +228,23 @@ class FishingWindow(ttk.Frame):
         parent.columnconfigure(0, weight=1)
 
     def pick_rod_slot(self) -> None:
-        point = self.app.select_point("Clique na posicao da VARA DE PESCAR  -  ESC cancela")
+        point = self.app.select_point("Clique na posição da VARA DE PESCAR  -  ESC cancela")
         if point:
             self.cfg["rod_slot"] = list(point)
             self.var_rod_slot.set(region_text(point))
             self.app.config_store.save()
-            self.log(f"Posicao da vara definida: {region_text(point)}")
+            self.log(f"Posição da vara definida: {region_text(point)}")
 
     def pick_region(self) -> None:
-        region = self.app.select_region("Arraste sobre a area de pesca  -  ESC cancela")
+        region = self.app.select_region("Arraste sobre a área de pesca  -  ESC cancela")
         if region:
             self.cfg["region"] = region
             self.var_region.set(region_text(region))
             self.app.config_store.save()
-            self.log(f"Regiao de pesca definida: {region_text(region)}")
+            self.log(f"Região de pesca definida: {region_text(region)}")
 
     def calibrate_color(self) -> None:
-        region = self.app.select_region("Selecione um pedaco de AGUA  -  ESC cancela")
+        region = self.app.select_region("Selecione um pedaço de ÁGUA  -  ESC cancela")
         if not region:
             return
         with ScreenCapture() as cap:
@@ -262,10 +255,10 @@ class FishingWindow(ttk.Frame):
         self.var_mode.set("hsv")
         self.cfg["hsv_reference_brightness"] = reference_brightness
         self.save_config()
-        self.log(f"Cor calibrada: HSV {lower} - {upper} (brilho de referencia: {reference_brightness:.0f})")
+        self.log(f"Cor calibrada: HSV {lower} - {upper} (brilho de referência: {reference_brightness:.0f})")
 
     def capture_template(self) -> None:
-        region = self.app.select_region("Selecione UMA tile de agua  -  ESC cancela")
+        region = self.app.select_region("Selecione UMA tile de água  -  ESC cancela")
         if not region:
             return
         with ScreenCapture() as cap:
@@ -280,7 +273,7 @@ class FishingWindow(ttk.Frame):
     def _run_detection(self) -> tuple:
         cfg = self.worker_config()
         if not is_valid_region(cfg.get("region")):
-            raise ValueError("Selecione a regiao monitorada primeiro.")
+            raise ValueError("Selecione a região monitorada primeiro.")
 
         with ScreenCapture() as cap:
             frame = cap.grab(cfg["region"])
@@ -289,7 +282,7 @@ class FishingWindow(ttk.Frame):
             template = load_image(cfg["template_path"])
             if template is None:
                 raise ValueError(
-                    "Template de agua nao encontrado. Calibre um template ou use o modo HSV."
+                    "Template de água não encontrado. Calibre um template ou use o modo HSV."
                 )
             targets = find_water_template(frame, template, cfg.get("template_threshold", 0.80))
             self.var_effective_hsv.set("HSV efetivo atual: - (modo template)")
@@ -324,10 +317,10 @@ class FishingWindow(ttk.Frame):
             messagebox.showerror("AutoFishing", f"Falha no teste: {exc}")
             return
 
-        message = f"Teste de deteccao: {len(targets)} SQM(s) de agua encontrado(s)."
+        message = f"Teste de detecção: {len(targets)} SQM(s) de água encontrado(s)."
         if targets:
             cx, cy, score = targets[0]
-            message += f"\nMelhor candidato (relativo a regiao): x={cx} y={cy} score/cobertura={score}"
+            message += f"\nMelhor candidato (relativo à região): x={cx} y={cy} score/cobertura={score}"
         self.log(message)
         messagebox.showinfo("AutoFishing", message)
 
@@ -341,7 +334,7 @@ class FishingWindow(ttk.Frame):
 
         tile_size = max(4, parse_int(self.var_tile_size.get(), 32))
         preview = draw_tile_grid(frame, targets, tile_size)
-        self.log(f"Grid de SQM: {len(targets)} tile(s) valido(s) - feche a janela para continuar.")
+        self.log(f"Grid de SQM: {len(targets)} tile(s) válido(s) - feche a janela para continuar.")
         cv2.imshow("AutoFishing - grid de SQM (ESC ou fechar a janela)", preview)
         cv2.waitKey(0)
         cv2.destroyWindow("AutoFishing - grid de SQM (ESC ou fechar a janela)")
@@ -397,10 +390,10 @@ class FishingWindow(ttk.Frame):
         self.save_config()
         cfg = self.worker_config()
         if not self.cfg.get("rod_slot"):
-            messagebox.showwarning("AutoFishing", "Selecione a posicao da vara de pescar primeiro.")
+            messagebox.showwarning("AutoFishing", "Selecione a posição da vara de pescar primeiro.")
             return
         if not is_valid_region(cfg.get("region")):
-            messagebox.showwarning("AutoFishing", "Selecione a regiao monitorada primeiro.")
+            messagebox.showwarning("AutoFishing", "Selecione a região monitorada primeiro.")
             return
         self.app.start_worker(self.worker_key, AutoFishingWorker, cfg)
 

@@ -41,7 +41,7 @@ class _LoginForm:
 
         hint = ttk.Label(
             body,
-            text="Ainda nao tem assinatura? Clique em Cadastrar para criar a conta e "
+            text="Ainda não tem assinatura? Clique em Cadastrar para criar a conta e "
             "abrir o pagamento no navegador.",
             foreground="#666",
             wraplength=360,
@@ -90,7 +90,7 @@ class _LoginForm:
             self.accepted = True
             self.destroy()
             return
-        self.var_message.set(self.license_manager.message or "Nao foi possivel entrar.")
+        self.var_message.set(self.license_manager.message or "Não foi possível entrar.")
         self._maybe_offer_checkout()
         self._start_cooldown()
 
@@ -114,7 +114,7 @@ class _LoginForm:
                 "depois clique em Entrar aqui."
             )
         else:
-            self.var_message.set(self.license_manager.message or "Nao foi possivel iniciar o pagamento.")
+            self.var_message.set(self.license_manager.message or "Não foi possível iniciar o pagamento.")
         self._start_cooldown()
 
     def _maybe_offer_checkout(self) -> None:

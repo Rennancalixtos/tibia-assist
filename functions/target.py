@@ -32,7 +32,7 @@ def preprocess_name_for_ocr(frame: np.ndarray) -> np.ndarray:
 def read_name(frame: np.ndarray) -> str:
     if pytesseract is None:
         raise OCRUnavailable(
-            "pytesseract nao instalado. Instale-o e o Tesseract OCR."
+            "pytesseract não instalado. Instale-o e o Tesseract OCR."
         )
     processed = preprocess_name_for_ocr(frame)
     try:
@@ -100,12 +100,12 @@ class TargetWorker(BaseWorker):
 
         self.battle_list_region = self.config.get("battle_list_region")
         if not is_valid_region(self.battle_list_region):
-            raise ValueError("Regiao da Battle List nao configurada.")
+            raise ValueError("Região da Battle List não configurada.")
 
         self.empty_template = self._load_template("battle_empty_template")
         if self.empty_template is None:
-            raise ValueError("Modelo de lista vazia nao calibrado.")
-        self.empty_threshold = float(self.config.get("empty_match_threshold", 0.85))
+            raise ValueError("Modelo de lista vazia não calibrado.")
+        self.empty_threshold = 0.85
 
         rgb = self.config.get("attack_color_rgb") or [254, 0, 0]
         self.attack_rgb = (int(rgb[0]), int(rgb[1]), int(rgb[2]))
@@ -114,7 +114,7 @@ class TargetWorker(BaseWorker):
 
         self.attack_key = (self.config.get("attack_key") or "space").strip().lower()
         if not self.attack_key:
-            raise ValueError("Tecla de ataque nao configurada.")
+            raise ValueError("Tecla de ataque não configurada.")
         self.attack_check_delay = float(self.config.get("attack_check_delay", 0.5))
 
         self._last_warning = ""
@@ -129,7 +129,7 @@ class TargetWorker(BaseWorker):
         if capture is not None:
             capture.close()
         self.unregister_from_coordinator()
-        self.log(f"Target finalizado. Ataques disparados na sessao: {self.counter}.")
+        self.log(f"Target finalizado. Ataques disparados na sessão: {self.counter}.")
 
     def _load_template(self, key: str):
         path = self.config.get(key)
@@ -153,8 +153,8 @@ class TargetWorker(BaseWorker):
         score = self.battle_list_empty_score()
         if score is None:
             self.warn_once(
-                "AVISO: modelo de lista vazia maior que a regiao configurada - "
-                "recalibre a regiao da Battle List ou o modelo."
+                "AVISO: modelo de lista vazia maior que a região configurada - "
+                "recalibre a região da Battle List ou o modelo."
             )
             return False
         return score >= self.empty_threshold
@@ -197,7 +197,7 @@ class TargetWorker(BaseWorker):
                 self.bump_counter()
                 self.log(
                     f"Ataque #{self.counter}: tecla '{self.attack_key}' pressionada - "
-                    f"atacando={'sim' if attacking else 'nao confirmado'}."
+                    f"atacando={'sim' if attacking else 'não confirmado'}."
                 )
 
             while not self.stopped:

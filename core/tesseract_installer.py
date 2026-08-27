@@ -63,7 +63,7 @@ def install_tesseract(on_progress=None) -> tuple[bool, str]:
     else:
         url = _find_windows_installer_url()
         if not url:
-            return False, "Nao foi possivel encontrar o instalador do Tesseract no GitHub."
+            return False, "Não foi possível encontrar o instalador do Tesseract no GitHub."
 
         downloaded_path = os.path.join(tempfile.gettempdir(), "tesseract-ocr-setup.exe")
         report("Baixando instalador do Tesseract...")
@@ -88,9 +88,9 @@ def install_tesseract(on_progress=None) -> tuple[bool, str]:
                 pass
 
     if result.returncode != 0:
-        return False, f"Instalador terminou com codigo de saida {result.returncode}."
+        return False, f"Instalador terminou com código de saída {result.returncode}."
 
     if find_tesseract() is None:
-        return False, "Instalacao concluida, mas o tesseract.exe nao foi encontrado depois."
+        return False, "Instalação concluída, mas o tesseract.exe não foi encontrado depois."
 
     return True, "Tesseract instalado com sucesso."

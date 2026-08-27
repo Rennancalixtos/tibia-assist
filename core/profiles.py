@@ -34,7 +34,7 @@ def list_profiles() -> list[str]:
 def save_profile(name: str, config_data: dict) -> str:
     name = sanitize_profile_name(name)
     if not name:
-        raise ValueError("Nome de perfil invalido.")
+        raise ValueError("Nome de perfil inválido.")
     os.makedirs(PROFILES_DIR, exist_ok=True)
     snapshot = {k: v for k, v in copy.deepcopy(config_data).items() if k not in EXCLUDED_SECTIONS}
     with open(profile_path(name), "w", encoding="utf-8") as fp:
@@ -45,7 +45,7 @@ def save_profile(name: str, config_data: dict) -> str:
 def load_profile(name: str) -> dict:
     path = profile_path(name)
     if not os.path.exists(path):
-        raise FileNotFoundError(f"Perfil {name!r} nao encontrado.")
+        raise FileNotFoundError(f"Perfil {name!r} não encontrado.")
     with open(path, "r", encoding="utf-8") as fp:
         return json.load(fp)
 

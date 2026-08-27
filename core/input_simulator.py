@@ -38,13 +38,13 @@ class InputSimulator:
     def _background_failed(self, exc: Exception) -> None:
         self._background_disabled = True
         if self.on_fallback:
-            self.on_fallback(f"Modo background falhou ({exc}) - revertendo para modo padrao (mouse real).")
+            self.on_fallback(f"Modo background falhou ({exc}) - revertendo para modo padrão (mouse real).")
 
     def _background_ready(self) -> bool:
         if not self.background_hwnd or self._background_disabled:
             return False
         if win32gui is None:
-            self._background_failed(RuntimeError("pywin32 indisponivel"))
+            self._background_failed(RuntimeError("pywin32 indisponível"))
             return False
         return True
 
@@ -85,7 +85,7 @@ class InputSimulator:
         if self._background_ready():
             try:
                 if not win32gui.IsWindow(self.background_hwnd):
-                    raise RuntimeError("janela do jogo nao encontrada")
+                    raise RuntimeError("janela do jogo não encontrada")
                 background_input.post_click(self.background_hwnd, x, y, button)
                 return int(x), int(y)
             except Exception as exc:
@@ -119,7 +119,7 @@ class InputSimulator:
         if self._background_ready():
             try:
                 if not win32gui.IsWindow(self.background_hwnd):
-                    raise RuntimeError("janela do jogo nao encontrada")
+                    raise RuntimeError("janela do jogo não encontrada")
                 background_input.post_drag(self.background_hwnd, from_x, from_y, to_x, to_y)
                 return int(to_x), int(to_y)
             except Exception as exc:
@@ -144,7 +144,7 @@ class InputSimulator:
         if self._background_ready():
             try:
                 if not win32gui.IsWindow(self.background_hwnd):
-                    raise RuntimeError("janela do jogo nao encontrada")
+                    raise RuntimeError("janela do jogo não encontrada")
                 background_input.post_key(self.background_hwnd, key)
                 return
             except Exception as exc:

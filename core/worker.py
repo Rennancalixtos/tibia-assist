@@ -97,7 +97,7 @@ class BaseWorker(threading.Thread):
         ):
             if self.coordinator and name and self.coordinator.should_pause(name):
                 if not externally_paused_logged:
-                    self.log("Pausado (outra rotina esta agindo)...")
+                    self.log("Pausado (outra rotina está agindo)...")
                     externally_paused_logged = True
                 self.coordinator.confirm_paused(name)
             if not self.sleep(0.1):

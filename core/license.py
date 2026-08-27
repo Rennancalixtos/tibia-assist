@@ -14,7 +14,7 @@ try:
 except ImportError:
     win32crypt = None
 
-REQUEST_TIMEOUT = 25
+REQUEST_TIMEOUT = 10
 
 _DPAPI_PREFIX = "dpapi:"
 
@@ -78,7 +78,7 @@ class LicenseManager:
     def __init__(self, section: dict):
         self.section = section
         self.valid = False
-        self.message = "Faca login para ativar o programa."
+        self.message = "Faça login para ativar o programa."
         self._apply_cached_state()
 
     @property
@@ -135,11 +135,11 @@ class LicenseManager:
     def _apply_cached_state(self) -> None:
         if not self.logged_in:
             self.valid = False
-            self.message = "Faca login para ativar o programa."
+            self.message = "Faça login para ativar o programa."
             return
         if self.section.get("cache_sig") != self._current_cache_sig():
             self.valid = False
-            self.message = "Sessao local invalida. Conecte-se a internet para revalidar."
+            self.message = "Sessão local inválida. Conecte-se à internet para revalidar."
             return
         if self.section.get("status") != "active":
             self.valid = False
@@ -149,7 +149,7 @@ class LicenseManager:
         expires = _parse_iso(self.section.get("expires_at"))
         if expires is None:
             self.valid = False
-            self.message = "Assinatura sem data de expiracao valida."
+            self.message = "Assinatura sem data de expiração válida."
             return
         if datetime.now(timezone.utc) >= expires:
             self.valid = False
@@ -163,7 +163,7 @@ class LicenseManager:
             self.message = ""
         else:
             self.valid = False
-            self.message = "Nao foi possivel confirmar a assinatura online. Conecte-se a internet."
+            self.message = "Não foi possível confirmar a assinatura online. Conecte-se à internet."
 
     def _apply_session(self, body: dict) -> None:
         self.section["access_token"] = _protect(body.get("access_token", ""))
@@ -177,7 +177,7 @@ class LicenseManager:
         self.section["checked_at"] = time.time()
         self.section["cache_sig"] = self._current_cache_sig()
         self.valid = bool(license_info.get("valid"))
-        self.message = "" if self.valid else str(license_info.get("reason") or "Assinatura invalida.")
+        self.message = "" if self.valid else str(license_info.get("reason") or "Assinatura inválida.")
 
     def _clear_session(self) -> None:
         self.section["access_token"] = ""
@@ -212,11 +212,11 @@ class LicenseManager:
 
     def signup(self, email: str, password: str) -> bool:
         if not self.api_base_url:
-            self.message = "Backend de licenca nao configurado (api_base_url vazio)."
+            self.message = "Backend de licença não configurado (api_base_url vazio)."
             return False
         status, body = self._post("/api/auth/signup", {"email": email, "password": password})
         if body is None:
-            self.message = "Sem conexao com o servidor de licenca."
+            self.message = "Sem conexão com o servidor de licença."
             return False
         if status != 200:
             self.message = str(body.get("error") or "Falha ao cadastrar.")
@@ -226,14 +226,14 @@ class LicenseManager:
 
     def login(self, email: str, password: str) -> bool:
         if not self.api_base_url:
-            self.message = "Backend de licenca nao configurado (api_base_url vazio)."
+            self.message = "Backend de licença não configurado (api_base_url vazio)."
             return False
         status, body = self._post("/api/auth/login", {"email": email, "password": password})
         if body is None:
-            self.message = "Sem conexao com o servidor de licenca."
+            self.message = "Sem conexão com o servidor de licença."
             return False
         if status != 200:
-            self.message = str(body.get("error") or "Credenciais invalidas.")
+            self.message = str(body.get("error") or "Credenciais inválidas.")
             return False
         self._apply_session(body)
         return self.valid
@@ -242,11 +242,11 @@ class LicenseManager:
         refresh_token = self._plain("refresh_token")
         if not refresh_token:
             self.valid = False
-            self.message = "Faca login para ativar o programa."
+            self.message = "Faça login para ativar o programa."
             return False
         if not self.api_base_url:
             self.valid = False
-            self.message = "Backend de licenca nao configurado (api_base_url vazio)."
+            self.message = "Backend de licença não configurado (api_base_url vazio)."
             return False
 
         status, body = self._post("/api/auth/refresh", {"refresh_token": refresh_token})
@@ -254,13 +254,13 @@ class LicenseManager:
             self._apply_cached_state()
             if not self.valid:
                 self.message = (
-                    "Sem conexao com o servidor de licenca e sem validacao "
+                    "Sem conexão com o servidor de licença e sem validação "
                     "recente em cache. " + self.message
                 )
             return self.valid
         if status == 401:
             self._clear_session()
-            self.message = str(body.get("error") or "Sessao expirada. Faca login novamente.")
+            self.message = str(body.get("error") or "Sessão expirada. Faça login novamente.")
             return False
         if status != 200:
             self._apply_cached_state()
@@ -272,14 +272,14 @@ class LicenseManager:
     def start_checkout(self) -> str | None:
         access_token = self._plain("access_token")
         if not access_token:
-            self.message = "Faca login antes de assinar."
+            self.message = "Faça login antes de assinar."
             return None
         status, body = self._post("/api/stripe/checkout", {"access_token": access_token})
         if body is None:
-            self.message = "Sem conexao com o servidor de licenca."
+            self.message = "Sem conexão com o servidor de licença."
             return None
         if status != 200:
-            self.message = str(body.get("error") or "Nao foi possivel iniciar o pagamento.")
+            self.message = str(body.get("error") or "Não foi possível iniciar o pagamento.")
             return None
         return body.get("url")
 
@@ -288,7 +288,7 @@ class LicenseManager:
         if access_token:
             self._post("/api/auth/logout", {"access_token": access_token})
         self._clear_session()
-        self.message = "Faca login para ativar o programa."
+        self.message = "Faça login para ativar o programa."
 
     def heartbeat(self) -> str:
         session_token = str(self.section.get("session_token") or "")

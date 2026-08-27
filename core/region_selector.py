@@ -57,7 +57,7 @@ class _Overlay(tk.Toplevel):
 
 
 def select_region(
-    master: tk.Misc, hint: str = "Arraste para selecionar a regiao  -  ESC cancela"
+    master: tk.Misc, hint: str = "Arraste para selecionar a região  -  ESC cancela"
 ) -> list[int] | None:
     overlay = _Overlay(master, hint)
     state = {"x": 0, "y": 0, "rect": None}

@@ -152,17 +152,17 @@ class AutoFishingWorker(BaseWorker):
 
         self.rod_slot = self.config.get("rod_slot")
         if not (isinstance(self.rod_slot, (list, tuple)) and len(self.rod_slot) == 2):
-            raise ValueError("Slot da vara de pescar nao configurado.")
+            raise ValueError("Slot da vara de pescar não configurado.")
 
         if not is_valid_region(self.region):
-            raise ValueError("Regiao de pesca nao configurada.")
+            raise ValueError("Região de pesca não configurada.")
 
         if self.mode == "template":
             path = self.config.get("template_path")
             self.template = load_image(path) if path else None
             if self.template is None:
                 raise ValueError(
-                    "Template de agua nao encontrado. Calibre um template ou use o modo HSV."
+                    "Template de água não encontrado. Calibre um template ou use o modo HSV."
                 )
 
         self.break_enabled = bool(self.config.get("break_enabled", True))
@@ -178,7 +178,7 @@ class AutoFishingWorker(BaseWorker):
         self._next_recalibrate_at = time.monotonic() + self.auto_recalibrate_interval_minutes * 60
 
         self.log(
-            f"AutoFishing iniciado (modo={self.mode}, regiao={self.region}, "
+            f"AutoFishing iniciado (modo={self.mode}, região={self.region}, "
             f"vara={tuple(self.rod_slot)}, backend={InputSimulator.backend_name()})."
         )
 
@@ -205,7 +205,7 @@ class AutoFishingWorker(BaseWorker):
         if capture is not None:
             capture.close()
         self.unregister_from_coordinator()
-        self.log(f"AutoFishing finalizado. Lances na sessao: {self.counter}.")
+        self.log(f"AutoFishing finalizado. Lances na sessão: {self.counter}.")
 
     def detect(
         self, frame: np.ndarray, hsv_lower: list[int] | None = None, hsv_upper: list[int] | None = None
@@ -250,7 +250,7 @@ class AutoFishingWorker(BaseWorker):
         self.emit_config_update(
             {"hsv_lower": new_lower, "hsv_upper": new_upper, "hsv_reference_brightness": new_reference}
         )
-        self.log(f"Recalibracao automatica (EMA): HSV ajustado para {new_lower} - {new_upper}.")
+        self.log(f"Recalibração automática (EMA): HSV ajustado para {new_lower} - {new_upper}.")
         self._recent_water_pixels.clear()
 
     def _collect_recalibration_samples(self, frame: np.ndarray, targets: list[tuple[int, int, int]]) -> None:
@@ -296,7 +296,7 @@ class AutoFishingWorker(BaseWorker):
                     hsv_lower, hsv_upper, current_brightness, self.hsv_reference_brightness
                 )
                 if abs(delta - self._last_logged_delta) > 15:
-                    self.log(f"Brilho da cena mudou (delta V={delta:+.0f}), ajustando deteccao de agua (dia/noite).")
+                    self.log(f"Brilho da cena mudou (delta V={delta:+.0f}), ajustando detecção de água (dia/noite).")
                     self._last_logged_delta = delta
 
             targets = self.detect(frame, effective_lower, effective_upper)
@@ -308,7 +308,7 @@ class AutoFishingWorker(BaseWorker):
                     self._next_recalibrate_at = time.monotonic() + self.auto_recalibrate_interval_minutes * 60
 
             if not targets:
-                self.log("Nenhuma tile de agua encontrada na regiao. Aguardando...")
+                self.log("Nenhuma tile de água encontrada na região. Aguardando...")
                 if not self.sleep(1.5):
                     return
                 continue
@@ -330,7 +330,7 @@ class AutoFishingWorker(BaseWorker):
             self.bump_counter()
             self.log(
                 f"Vara aberta em ({rod_x}, {rod_y}) -> lance #{self.counter} em "
-                f"({clicked_x}, {clicked_y}) - {len(targets)} tile(s) de agua detectada(s)."
+                f"({clicked_x}, {clicked_y}) - {len(targets)} tile(s) de água detectada(s)."
             )
 
             if max_casts and self.counter >= max_casts:
