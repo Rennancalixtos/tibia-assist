@@ -4,6 +4,7 @@ import os
 
 import pyautogui as pg
 import win32gui
+from PIL import Image
 
 from core import background_input
 from core.config import RESOURCE_DIR
@@ -12,6 +13,16 @@ from core.worker import BaseWorker
 pg.useImageNotFoundException(False)
 
 ICON_NAMES = ["meat1", "meat2", "meat3", "meat4", "meat5", "whitemushrooms", "ham1", "ham2", "ham3", "ham4", "ham5", "fish1"]
+
+BADGE_HEIGHT_RATIO = 0.35
+
+
+def _load_icon_without_badge(path: str) -> Image.Image:
+    with Image.open(path) as img:
+        img = img.convert("RGB")
+        width, height = img.size
+        crop_height = max(1, int(height * (1 - BADGE_HEIGHT_RATIO)))
+        return img.crop((0, 0, width, crop_height)).copy()
 
 
 class AutoFoodWorker(BaseWorker):
@@ -28,7 +39,8 @@ class AutoFoodWorker(BaseWorker):
         self.check_interval = float(self.config.get("check_interval", 1.0))
         self.eat_cooldown = float(self.config.get("eat_cooldown", 120.0))
         self.icons = {
-            name: os.path.join(RESOURCE_DIR, "img", "food", f"{name}.png") for name in ICON_NAMES
+            name: _load_icon_without_badge(os.path.join(RESOURCE_DIR, "img", "food", f"{name}.png"))
+            for name in ICON_NAMES
         }
         self.log("AutoFood iniciado (clique em segundo plano, sem fallback pro mouse real).")
 

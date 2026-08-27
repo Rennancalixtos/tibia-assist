@@ -4,7 +4,7 @@ from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QGuiApplication, QTextCursor
 from PySide6.QtWidgets import QPlainTextEdit, QVBoxLayout, QWidget
 
-_WIDTH = 460
+_WIDTH = 280
 _HEIGHT = 170
 _MARGIN_X = 10
 _MARGIN_Y = 48
