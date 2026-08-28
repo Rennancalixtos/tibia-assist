@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { Payment } from "mercadopago";
 import { mercadoPagoClient } from "@/lib/mercadopago";
 import { supabaseAdmin } from "@/lib/supabase";
+import { sendDirectMessage } from "@/lib/discord/core";
 
 export const dynamic = "force-dynamic";
 
@@ -67,8 +68,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true });
   }
 
+  // Formato "userId:planId" (checkout via link, legado) ou
+  // "userId:planId:discordUserId" (fluxo atual, PIX via Discord - o terceiro
+  // campo so existe nesse segundo caso, usado so pra mandar a DM de confirmacao).
   const externalReference = payment.external_reference ?? "";
-  const [userId, planId] = externalReference.split(":");
+  const [userId, planId, discordUserId] = externalReference.split(":");
 
   if (!userId || !planId) {
     console.error("Pagamento aprovado sem external_reference valido", payment.id);
@@ -116,6 +120,13 @@ export async function POST(request: Request) {
   if (upsertError) {
     console.error("Falha ao gravar licenca (webhook Mercado Pago)", upsertError);
     return NextResponse.json({ error: "Falha ao gravar licenca." }, { status: 500 });
+  }
+
+  if (discordUserId) {
+    await sendDirectMessage(
+      discordUserId,
+      `Pagamento confirmado! Sua licenca do EasyF de ${plan.days} dias foi ativada.`
+    );
   }
 
   return NextResponse.json({ received: true });

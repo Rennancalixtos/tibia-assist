@@ -4,6 +4,7 @@ import {
   emailModal,
   ephemeralReply,
   modalSubmitValue,
+  sendDirectMessage,
 } from "@/lib/discord/core";
 import { resolveAccountByEmail } from "@/lib/discord/account-link";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -24,31 +25,6 @@ function updateMessageResponse(content: string) {
       components: [],
     },
   };
-}
-
-/**
- * Envia uma DM ao usuario avisando da decisao (aprovado/rejeitado). Best
- * effort: usuarios que bloqueiam DM de membros do servidor ou que ja
- * deixaram o servidor fazem essa chamada falhar - nunca deve derrubar o
- * fluxo de aprovacao/rejeicao por causa disso.
- */
-async function sendTrialDecisionDm(discordUserId: string, content: string): Promise<void> {
-  try {
-    const dmChannelResponse = await discordApi("/users/@me/channels", {
-      method: "POST",
-      body: JSON.stringify({ recipient_id: discordUserId }),
-    });
-    if (!dmChannelResponse.ok) {
-      return;
-    }
-    const dmChannel = await dmChannelResponse.json();
-    await discordApi(`/channels/${dmChannel.id}/messages`, {
-      method: "POST",
-      body: JSON.stringify({ content }),
-    });
-  } catch (err) {
-    console.error("Falha ao enviar DM de decisao de teste gratis", err);
-  }
 }
 
 export async function handleTrialCommand(_interaction: any) {
@@ -219,7 +195,7 @@ export async function handleTrialComponent(interaction: any, customId: string) {
       );
     }
 
-    await sendTrialDecisionDm(
+    await sendDirectMessage(
       trialRequest.discord_user_id,
       `Seu teste gratis do EasyF foi aprovado! Voce tem ${hoursGranted} horas de acesso a partir de agora.`
     );
@@ -244,7 +220,7 @@ export async function handleTrialComponent(interaction: any, customId: string) {
     return ephemeralReply("Essa solicitacao ja foi decidida por outra pessoa.");
   }
 
-  await sendTrialDecisionDm(trialRequest.discord_user_id, "Seu pedido de teste gratis no EasyF foi rejeitado.");
+  await sendDirectMessage(trialRequest.discord_user_id, "Seu pedido de teste gratis no EasyF foi rejeitado.");
 
   return updateMessageResponse(`Rejeitado por <@${clickerId}>.`);
 }
