@@ -5,3 +5,5 @@ out/
 .env.local
 .vercel
 *.log
+*.tsbuildinfo
+next-env.d.ts
