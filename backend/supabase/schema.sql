@@ -133,3 +133,24 @@ create table if not exists public.mercadopago_payments (
 alter table public.mercadopago_payments enable row level security;
 
 grant select, insert, update, delete on public.mercadopago_payments to service_role;
+
+-- Tickets de suporte abertos via botao no Discord (canal privado criado por
+-- ticket, com o bot). Nao exige conta no EasyF - identidade e so o
+-- discord_user_id. O indice parcial garante consulta rapida por "ja tem
+-- ticket aberto" sem precisar checar todo o historico.
+create table if not exists public.support_tickets (
+  id uuid primary key default gen_random_uuid(),
+  channel_id text not null unique,
+  discord_user_id text not null,
+  status text not null default 'open' check (status in ('open', 'closed')),
+  opened_at timestamptz not null default now(),
+  closed_at timestamptz
+);
+
+create index if not exists support_tickets_open_by_user_idx
+  on public.support_tickets (discord_user_id)
+  where status = 'open';
+
+alter table public.support_tickets enable row level security;
+
+grant select, insert, update, delete on public.support_tickets to service_role;
