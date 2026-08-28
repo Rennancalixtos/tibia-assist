@@ -244,6 +244,16 @@ nunca com um push comum em `main`/`dev`:
    automaticamente - acompanhe em Actions no GitHub. Nenhum passo manual de
    build/upload e necessario.
 
+A mesma tag dispara `.github/workflows/changelog-discord.yml`, que posta o
+changelog no canal de atualizacoes do Discord a partir da legenda (primeira
+linha) dos commits novos - **por isso a legenda tem que ser em linguagem
+simples pro usuario final, sem termos tecnicos** (nome de funcao, endpoint,
+variavel de ambiente etc). Alem disso, esse changelog e so sobre o app
+desktop: o workflow so inclui um commit se ele tocar `core/`, `gui/`,
+`functions/` ou `main.py` - commits que mexem so em `backend/` (site, bot do
+Discord) ou em ferramentas internas (ex: `manage_plans.py`) ficam de fora
+automaticamente, mesmo indo na mesma tag/PR.
+
 ### Instalador (NSIS)
 
 Cada release ganha dois arquivos: o `.exe` **portatil** (o que o
