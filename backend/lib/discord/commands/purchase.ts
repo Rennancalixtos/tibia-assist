@@ -1,6 +1,7 @@
 import { ephemeralReply, ephemeralAttachmentReply, emailModal, modalSubmitValue } from "@/lib/discord/core";
 import { resolveAccountByEmail } from "@/lib/discord/account-link";
 import { createPixPaymentForUser } from "@/lib/mercadopago";
+import { supabaseAdmin } from "@/lib/supabase";
 
 export const PURCHASE_COMMAND_NAME = "comprar-licenca";
 
@@ -10,20 +11,20 @@ function extractDiscordUserId(interaction: any): string | undefined {
   return interaction?.member?.user?.id ?? interaction?.user?.id;
 }
 
+/**
+ * Timestamp dinamico do proprio Discord (<t:...:R>) - o cliente de cada
+ * usuario renderiza e atualiza sozinho um "expira em X minutos" ao vivo, sem
+ * o bot precisar editar a mensagem em intervalos.
+ */
 function formatExpiration(expiresAt: string | null): string {
   if (!expiresAt) {
     return "em alguns minutos";
   }
-  try {
-    const formatted = new Date(expiresAt).toLocaleString("pt-BR", {
-      timeZone: "America/Sao_Paulo",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    return `as ${formatted}`;
-  } catch {
+  const unixSeconds = Math.floor(new Date(expiresAt).getTime() / 1000);
+  if (Number.isNaN(unixSeconds)) {
     return "em alguns minutos";
   }
+  return `<t:${unixSeconds}:R>`;
 }
 
 export async function handlePurchaseCommand(interaction: any) {
@@ -78,8 +79,25 @@ export async function handlePurchaseModalSubmit(interaction: any) {
     return ephemeralReply(`Nao foi possivel gerar o pagamento: ${result.error}`);
   }
 
+  // Guarda o token desta interacao (valido por 15min) associado ao
+  // payment_id - se o pagamento for aprovado dentro desse prazo, o webhook
+  // edita esta mesma mensagem em vez de so mandar DM.
+  const interactionToken = interaction?.token;
+  if (interactionToken) {
+    const { error: insertError } = await supabaseAdmin.from("mercadopago_payments").insert({
+      payment_id: result.paymentId,
+      user_id: account.userId,
+      plan_id: planId,
+      interaction_token: interactionToken,
+      status: "pending",
+    });
+    if (insertError) {
+      console.error("Falha ao registrar interaction_token do pagamento PIX", insertError);
+    }
+  }
+
   return ephemeralAttachmentReply(
-    `Escaneie o QR code abaixo com o app do seu banco, ou copie o codigo:\n\`\`\`${result.qrCodeText}\`\`\`\nEsse PIX expira ${formatExpiration(result.expiresAt)}. Assim que o pagamento for confirmado, sua licenca e ativada automaticamente e voce recebe uma DM avisando.`,
+    `Escaneie o QR code abaixo com o app do seu banco, ou copie o codigo:\n\`\`\`${result.qrCodeText}\`\`\`\nEsse PIX expira ${formatExpiration(result.expiresAt)}. Assim que o pagamento for confirmado, esta mensagem e atualizada automaticamente.`,
     [{ title: "Pagamento PIX - EasyF", color: 5793266, image: { url: "attachment://pix-qrcode.png" } }],
     "pix-qrcode.png",
     result.qrCodeBase64

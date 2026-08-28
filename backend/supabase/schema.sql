@@ -130,6 +130,15 @@ create table if not exists public.mercadopago_payments (
   processed_at timestamptz not null default now()
 );
 
+-- Guarda o token da interacao do Discord (valido por so 15 minutos) e um
+-- status proprio - permite ao webhook EDITAR a mensagem original do QR code
+-- (em vez de so mandar DM) quando o pagamento e aprovado dentro dessa janela.
+-- A linha e inserida no momento da criacao do PIX (status 'pending'), e o
+-- webhook faz UPDATE pra 'processed' em vez de INSERT, pra nao colidir com a
+-- PK e ainda permitir recuperar o interaction_token guardado.
+alter table public.mercadopago_payments add column if not exists interaction_token text;
+alter table public.mercadopago_payments add column if not exists status text not null default 'processed' check (status in ('pending', 'processed'));
+
 alter table public.mercadopago_payments enable row level security;
 
 grant select, insert, update, delete on public.mercadopago_payments to service_role;

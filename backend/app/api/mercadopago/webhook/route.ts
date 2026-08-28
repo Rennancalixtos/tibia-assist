@@ -81,16 +81,43 @@ export async function POST(request: Request) {
 
   const paymentId = String(payment.id);
 
-  const { error: insertError } = await supabaseAdmin
+  // A linha pode ja existir (inserida com status 'pending' na hora de criar
+  // o PIX, carregando o interaction_token) ou nao (fluxo legado de checkout
+  // por link, que nunca insere antecipadamente) - trata os dois casos.
+  const { data: existingPayment } = await supabaseAdmin
     .from("mercadopago_payments")
-    .insert({ payment_id: paymentId, user_id: userId, plan_id: planId });
+    .select("status, interaction_token")
+    .eq("payment_id", paymentId)
+    .maybeSingle();
 
-  if (insertError) {
-    if (insertError.code === "23505") {
+  let interactionToken: string | null = null;
+
+  if (existingPayment) {
+    if (existingPayment.status === "processed") {
       return NextResponse.json({ received: true });
     }
-    console.error("Falha ao registrar pagamento do Mercado Pago", insertError);
-    return NextResponse.json({ error: "Falha ao registrar pagamento." }, { status: 500 });
+    interactionToken = existingPayment.interaction_token;
+    const { error: updateError, count } = await supabaseAdmin
+      .from("mercadopago_payments")
+      .update({ status: "processed" }, { count: "exact" })
+      .eq("payment_id", paymentId)
+      .eq("status", "pending");
+
+    if (updateError || !count) {
+      return NextResponse.json({ received: true });
+    }
+  } else {
+    const { error: insertError } = await supabaseAdmin
+      .from("mercadopago_payments")
+      .insert({ payment_id: paymentId, user_id: userId, plan_id: planId, status: "processed" });
+
+    if (insertError) {
+      if (insertError.code === "23505") {
+        return NextResponse.json({ received: true });
+      }
+      console.error("Falha ao registrar pagamento do Mercado Pago", insertError);
+      return NextResponse.json({ error: "Falha ao registrar pagamento." }, { status: 500 });
+    }
   }
 
   const { data: plan, error: planError } = await supabaseAdmin
@@ -122,11 +149,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Falha ao gravar licenca." }, { status: 500 });
   }
 
-  if (discordUserId) {
-    await sendDirectMessage(
-      discordUserId,
-      `Pagamento confirmado! Sua licenca do EasyF de ${plan.days} dias foi ativada.`
+  const confirmationText = `Pagamento confirmado! Sua licenca do EasyF de ${plan.days} dias foi ativada.`;
+  let editedOriginalMessage = false;
+
+  if (interactionToken) {
+    // Edita a propria mensagem do QR code - so funciona dentro de ate 15min
+    // da interacao original (limite do Discord para esse endpoint). Passado
+    // esse prazo, cai pro fallback de DM abaixo.
+    const editResponse = await fetch(
+      `https://discord.com/api/v10/webhooks/${process.env.DISCORD_APPLICATION_ID}/${interactionToken}/messages/@original`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: confirmationText, embeds: [], components: [], attachments: [] }),
+      }
     );
+    editedOriginalMessage = editResponse.ok;
+    if (!editResponse.ok) {
+      console.error("Falha ao editar mensagem original do PIX (janela de 15min provavelmente expirou)", await editResponse.text());
+    }
+  }
+
+  if (discordUserId && !editedOriginalMessage) {
+    await sendDirectMessage(discordUserId, confirmationText);
   }
 
   return NextResponse.json({ received: true });
