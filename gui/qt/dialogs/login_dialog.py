@@ -38,7 +38,7 @@ class LoginDialog(QDialog):
 
         actions = QHBoxLayout()
         self.login_button = QPushButton("Entrar")
-        self.signup_button = QPushButton("Cadastrar...")
+        self.signup_button = QPushButton("Cadastrar")
         self.cancel_button = QPushButton("Sair")
         self.login_button.clicked.connect(self._login)
         self.signup_button.clicked.connect(self._signup)
