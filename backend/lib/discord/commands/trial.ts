@@ -143,6 +143,10 @@ export async function handleTrialModalSubmit(interaction: any) {
 }
 
 export async function handleTrialComponent(interaction: any, customId: string) {
+  if (customId === "trial:open-modal") {
+    return handleTrialCommand(interaction);
+  }
+
   const parts = customId.split(":");
   const action = parts[1];
   const requestId = parts[2];

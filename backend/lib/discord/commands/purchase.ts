@@ -56,6 +56,12 @@ export async function handlePurchaseModalSubmit(interaction: any) {
   );
 }
 
-export async function handlePurchaseComponent(_interaction: any, _customId: string) {
+const PANEL_BUTTON_PREFIX = "purchase:open-modal:";
+
+export async function handlePurchaseComponent(_interaction: any, customId: string) {
+  if (customId.startsWith(PANEL_BUTTON_PREFIX)) {
+    const planId = customId.slice(PANEL_BUTTON_PREFIX.length);
+    return emailModal(`${MODAL_PREFIX}${planId}`, "Comprar licenca", "Seu e-mail cadastrado no EasyF");
+  }
   return ephemeralReply("Nenhuma acao pendente.");
 }
