@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 
 const VIEW_CHANNEL = 1 << 10;
 const SEND_MESSAGES = 1 << 11;
+const MANAGE_CHANNELS = 1 << 4;
 
 function extractDiscordUserId(interaction: any): string | undefined {
   return interaction?.member?.user?.id ?? interaction?.user?.id;
@@ -35,8 +36,9 @@ async function openTicket(interaction: any) {
   const guildId = process.env.DISCORD_GUILD_ID;
   const adminRoleId = process.env.DISCORD_ADMIN_ROLE_ID;
   const categoryId = process.env.DISCORD_TICKET_CATEGORY_ID;
+  const botApplicationId = process.env.DISCORD_APPLICATION_ID;
 
-  if (!guildId || !adminRoleId) {
+  if (!guildId || !adminRoleId || !botApplicationId) {
     return ephemeralReply("Sistema de ticket nao configurado corretamente. Avise um administrador.");
   }
 
@@ -50,6 +52,7 @@ async function openTicket(interaction: any) {
         { id: guildId, type: 0, deny: String(VIEW_CHANNEL) },
         { id: discordUserId, type: 1, allow: String(VIEW_CHANNEL | SEND_MESSAGES) },
         { id: adminRoleId, type: 0, allow: String(VIEW_CHANNEL | SEND_MESSAGES) },
+        { id: botApplicationId, type: 1, allow: String(VIEW_CHANNEL | SEND_MESSAGES | MANAGE_CHANNELS) },
       ],
     }),
   });
@@ -73,7 +76,7 @@ async function openTicket(interaction: any) {
     console.error("Falha ao registrar ticket no banco", insertError);
   }
 
-  await discordApi(`/channels/${channel.id}/messages`, {
+  const welcomeResponse = await discordApi(`/channels/${channel.id}/messages`, {
     method: "POST",
     body: JSON.stringify({
       content: `Ticket aberto por <@${discordUserId}>. Descreva seu problema, um admin vai te atender em breve.`,
@@ -85,6 +88,10 @@ async function openTicket(interaction: any) {
       ],
     }),
   });
+
+  if (!welcomeResponse.ok) {
+    console.error("Falha ao postar mensagem de boas-vindas no ticket", await welcomeResponse.text());
+  }
 
   return ephemeralReply(`Seu ticket foi criado: <#${channel.id}>`);
 }
