@@ -1,12 +1,14 @@
 name: Changelog no Discord
 
-# Dispara em todo push/merge direto na main (nao em tags - quem cuida de tags
-# e o release.yml, que gera o instalador via PyInstaller). Aqui so lemos o
-# historico de commits e mandamos um resumo pro canal de atualizacoes do
-# Discord via webhook - nada e escrito de volta no repo.
+# Dispara na mesma tag "vX.Y.Z" que o release.yml usa pra gerar o instalador -
+# ou seja, so posta changelog quando um release de verdade e publicado, nao a
+# cada merge na main. Aqui so lemos o historico de commits e mandamos um
+# resumo pro canal de atualizacoes do Discord via webhook; nada e escrito de
+# volta no repo.
 on:
   push:
-    branches: [main]
+    tags:
+      - "v*"
 
 permissions:
   contents: read
@@ -20,21 +22,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Le a versao atual do app (core/version.py)
-        id: app_version
-        shell: bash
-        run: |
-          set -euo pipefail
-          VERSION=$(grep -oP '(?<=APP_VERSION = ")[^"]+' core/version.py)
-          echo "Versao lida: $VERSION"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
       - name: Gera o changelog e posta no Discord
         shell: bash
         env:
-          APP_VERSION: ${{ steps.app_version.outputs.version }}
-          BEFORE_SHA: ${{ github.event.before }}
-          CURRENT_SHA: ${{ github.sha }}
+          TAG_NAME: ${{ github.ref_name }}
           # Configurar manualmente em Settings > Secrets and variables > Actions
           # do repositorio, com esse nome exato: DISCORD_UPDATES_WEBHOOK_URL
           # (webhook do canal "atualizacoes" no Discord).
@@ -42,53 +33,60 @@ jobs:
         run: |
           set -euo pipefail
 
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
+          PREV_TAG=$(git describe --tags --abbrev=0 "${TAG_NAME}^" 2>/dev/null || true)
 
           if [ -n "$PREV_TAG" ]; then
-            echo "Ultima tag alcancavel a partir de main: $PREV_TAG. Range: ${PREV_TAG}..HEAD"
-            RANGE="${PREV_TAG}..HEAD"
-          elif [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
-            echo "Nenhuma tag encontrada ainda. Range baseado no proprio push: ${BEFORE_SHA}..${CURRENT_SHA}"
-            RANGE="${BEFORE_SHA}..${CURRENT_SHA}"
+            echo "Tag anterior: $PREV_TAG. Range: ${PREV_TAG}..${TAG_NAME}"
+            RANGE="${PREV_TAG}..${TAG_NAME}"
           else
-            echo "Nenhuma tag e nenhum 'before' valido (ex: primeiro push do branch). Usando fallback dos ultimos 20 commits."
+            echo "Nenhuma tag anterior encontrada (primeiro release). Usando fallback dos ultimos 20 commits."
             RANGE=""
           fi
 
+          # Prefixo de commit convencional (feat:, fix:, etc.) e commits de bump
+          # de versao ("release: ...") nao dizem nada pro usuario final - o sed
+          # tira o prefixo e o grep -v filtra os releases antes de formatar.
+          format_subjects() {
+            sed -E 's/^(feat|fix|refactor|release|chore|docs|test|perf|style|build|ci)(\([^)]*\))?:\s*//' \
+              | grep -viE '^(bump|release)\b' \
+              | awk 'NF { $0 = toupper(substr($0,1,1)) substr($0,2); print "✅ " $0 }'
+          }
+
           if [ -n "$RANGE" ]; then
-            COMMITS=$(git log "$RANGE" --no-merges --pretty=format:'- `%h` %s (%an)' || true)
+            COMMITS=$(git log "$RANGE" --no-merges --pretty=format:'%s' | format_subjects || true)
           else
-            COMMITS=$(git log -n 20 --no-merges --pretty=format:'- `%h` %s (%an)' || true)
+            COMMITS=$(git log -n 20 "$TAG_NAME" --no-merges --pretty=format:'%s' | format_subjects || true)
           fi
 
           if [ -z "$COMMITS" ]; then
-            echo "Nenhum commit novo, pulando post."
+            echo "Nenhum commit relevante encontrado, pulando post."
             exit 0
           fi
 
-          TOTAL_COMMITS=$(printf '%s\n' "$COMMITS" | grep -c '^-')
-          echo "Total de commits no changelog: $TOTAL_COMMITS"
+          TOTAL_COMMITS=$(printf '%s\n' "$COMMITS" | grep -c '^✅')
+          echo "Total de itens no changelog: $TOTAL_COMMITS"
 
           if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
             echo "::warning::DISCORD_UPDATES_WEBHOOK_URL nao esta configurado (Settings > Secrets and variables > Actions do repositorio). Pulando post no Discord sem falhar o job."
             exit 0
           fi
 
+          HEADER="As alteracoes abaixo foram publicadas em producao."
           DESCRIPTION_LIMIT=4096
-          DESCRIPTION="$COMMITS"
+          BODY="$COMMITS"
 
-          if [ "${#COMMITS}" -gt "$DESCRIPTION_LIMIT" ]; then
-            RESERVE=80
-            MAX_LEN=$((DESCRIPTION_LIMIT - RESERVE))
+          if [ "${#COMMITS}" -gt "$((DESCRIPTION_LIMIT - ${#HEADER} - 100))" ]; then
+            MAX_LEN=$((DESCRIPTION_LIMIT - ${#HEADER} - 100))
             TRUNCATED="${COMMITS:0:$MAX_LEN}"
             TRUNCATED="${TRUNCATED%$'\n'*}"
-            SHOWN_COMMITS=$(printf '%s\n' "$TRUNCATED" | grep -c '^-')
+            SHOWN_COMMITS=$(printf '%s\n' "$TRUNCATED" | grep -c '^✅')
             REMAINING=$((TOTAL_COMMITS - SHOWN_COMMITS))
-            DESCRIPTION="${TRUNCATED}"$'\n'"...e mais ${REMAINING} commits"
-            echo "Changelog truncado: mostrando $SHOWN_COMMITS de $TOTAL_COMMITS commits (limite de descricao do embed do Discord)."
+            BODY="${TRUNCATED}"$'\n'"...e mais ${REMAINING} itens"
+            echo "Changelog truncado: mostrando $SHOWN_COMMITS de $TOTAL_COMMITS itens (limite de descricao do embed do Discord)."
           fi
 
-          TITLE="Atualizações - EasyF v${APP_VERSION}"
+          DESCRIPTION="${HEADER}"$'\n\n'"${BODY}"
+          TITLE="Atualizações - EasyF ${TAG_NAME}"
 
           PAYLOAD=$(jq -n \
             --arg title "$TITLE" \
@@ -107,4 +105,4 @@ jobs:
             exit 1
           fi
 
-          echo "Changelog postado no Discord com sucesso ($TOTAL_COMMITS commits)."
+          echo "Changelog postado no Discord com sucesso ($TOTAL_COMMITS itens)."
