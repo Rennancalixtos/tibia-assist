@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "discord:register-commands": "node scripts/register-discord-commands.mjs",
-    "discord:post-panel": "node scripts/post-trial-panel.mjs"
+    "discord:post-panel": "node scripts/post-trial-panel.mjs",
+    "discord:post-link": "node scripts/post-link-message.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
