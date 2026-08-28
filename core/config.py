@@ -88,7 +88,6 @@ DEFAULTS: dict[str, Any] = {
         "blank_slot": None,
         "amount": 0,
         "mana_region": None,
-        "mana_display_point": None,
         "min_mana": 300,
         "check_mana": True,
         "delay_min": 1.5,
