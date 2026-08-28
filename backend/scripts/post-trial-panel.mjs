@@ -1,10 +1,20 @@
 import "dotenv/config";
 
-const { DISCORD_BOT_TOKEN, DISCORD_TRIAL_PANEL_CHANNEL_ID, DISCORD_PURCHASE_PANEL_CHANNEL_ID } = process.env;
+const {
+  DISCORD_BOT_TOKEN,
+  DISCORD_TRIAL_PANEL_CHANNEL_ID,
+  DISCORD_PURCHASE_PANEL_CHANNEL_ID,
+  DISCORD_TICKET_CHANNEL_ID,
+} = process.env;
 
-if (!DISCORD_BOT_TOKEN || !DISCORD_TRIAL_PANEL_CHANNEL_ID || !DISCORD_PURCHASE_PANEL_CHANNEL_ID) {
+if (
+  !DISCORD_BOT_TOKEN ||
+  !DISCORD_TRIAL_PANEL_CHANNEL_ID ||
+  !DISCORD_PURCHASE_PANEL_CHANNEL_ID ||
+  !DISCORD_TICKET_CHANNEL_ID
+) {
   console.error(
-    "Defina DISCORD_BOT_TOKEN, DISCORD_TRIAL_PANEL_CHANNEL_ID e DISCORD_PURCHASE_PANEL_CHANNEL_ID antes de rodar este script."
+    "Defina DISCORD_BOT_TOKEN, DISCORD_TRIAL_PANEL_CHANNEL_ID, DISCORD_PURCHASE_PANEL_CHANNEL_ID e DISCORD_TICKET_CHANNEL_ID antes de rodar este script."
   );
   process.exit(1);
 }
@@ -69,4 +79,24 @@ await postPanel(
     ],
   },
   "compra"
+);
+
+await postPanel(
+  DISCORD_TICKET_CHANNEL_ID,
+  {
+    embeds: [
+      {
+        title: "Suporte - EasyF",
+        description: "Precisa de ajuda? Clique no botao abaixo pra abrir um ticket privado com o suporte.",
+        color: 5793266,
+      },
+    ],
+    components: [
+      {
+        type: 1,
+        components: [{ type: 2, style: 1, label: "Abrir Ticket", custom_id: "ticket:open" }],
+      },
+    ],
+  },
+  "ticket"
 );

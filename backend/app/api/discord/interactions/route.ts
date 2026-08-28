@@ -12,6 +12,7 @@ import {
   handlePurchaseModalSubmit,
   handlePurchaseComponent,
 } from "@/lib/discord/commands/purchase";
+import { handleTicketComponent } from "@/lib/discord/commands/ticket";
 
 // O Discord exige resposta em ate 3s e reenvia a interacao (com um novo ID)
 // se nao receber - por isso a rota so faz trabalho sincrono rapido, sem
@@ -74,6 +75,9 @@ export async function POST(request: Request) {
     }
     if (customId.startsWith("purchase:")) {
       return toHttpResponse(await handlePurchaseComponent(interaction, customId));
+    }
+    if (customId.startsWith("ticket:")) {
+      return toHttpResponse(await handleTicketComponent(interaction, customId));
     }
   }
 
