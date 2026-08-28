@@ -269,20 +269,6 @@ class LicenseManager:
         self._apply_session(body)
         return self.valid
 
-    def start_checkout(self) -> str | None:
-        access_token = self._plain("access_token")
-        if not access_token:
-            self.message = "Faça login antes de assinar."
-            return None
-        status, body = self._post("/api/stripe/checkout", {"access_token": access_token})
-        if body is None:
-            self.message = "Sem conexão com o servidor de licença."
-            return None
-        if status != 200:
-            self.message = str(body.get("error") or "Não foi possível iniciar o pagamento.")
-            return None
-        return body.get("url")
-
     def logout(self) -> None:
         access_token = self._plain("access_token")
         if access_token:

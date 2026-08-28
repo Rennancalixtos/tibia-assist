@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import webbrowser
-
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout
 
 from core.license import LicenseManager
 
 RATE_LIMIT_MS = 3000
+DISCORD_INVITE_URL = "https://discord.gg/zcMm5N4x9M"
+_ERROR_COLOR = "#ff5c5c"
+_SUCCESS_COLOR = "#3ddc84"
 
 
 class LoginDialog(QDialog):
@@ -22,9 +23,9 @@ class LoginDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
-        self.message_label = QLabel(license_manager.message or "")
+        self.message_label = QLabel()
         self.message_label.setWordWrap(True)
-        self.message_label.setStyleSheet("color: #ff5c5c;")
+        self._set_message(license_manager.message or "")
         layout.addWidget(self.message_label)
 
         form = QFormLayout()
@@ -49,22 +50,28 @@ class LoginDialog(QDialog):
         layout.addLayout(actions)
 
         hint = QLabel(
-            "Ainda não tem assinatura? Clique em Cadastrar para criar a conta e "
-            "abrir o pagamento no navegador."
+            f'Ainda não tem assinatura? <a href="{DISCORD_INVITE_URL}">Clique aqui</a> e '
+            "acesse nosso Discord."
         )
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #9298a8;")
+        hint.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        hint.setOpenExternalLinks(True)
         layout.addWidget(hint)
 
         self.email_edit.setFocus()
         self.email_edit.returnPressed.connect(self._login)
         self.password_edit.returnPressed.connect(self._login)
 
+    def _set_message(self, text: str, success: bool = False) -> None:
+        self.message_label.setText(text)
+        self.message_label.setStyleSheet(f"color: {_SUCCESS_COLOR if success else _ERROR_COLOR};")
+
     def _credentials(self) -> tuple[str, str] | None:
         email = self.email_edit.text().strip()
         password = self.password_edit.text()
         if not email or not password:
-            self.message_label.setText("Informe email e senha.")
+            self._set_message("Informe email e senha.")
             return None
         return email, password
 
@@ -85,16 +92,13 @@ class LoginDialog(QDialog):
             return
         self.login_button.setEnabled(False)
         self.signup_button.setEnabled(False)
-        self.message_label.setText("Entrando...")
-        token_before = self.license_manager.section.get("refresh_token")
+        self._set_message("Entrando...")
         ok = self.license_manager.login(*creds)
         self.on_save()
         if ok:
             self.accept()
             return
-        self.message_label.setText(self.license_manager.message or "Não foi possível entrar.")
-        if self._session_renewed(token_before):
-            self._maybe_offer_checkout()
+        self._set_message(self.license_manager.message or "Não foi possível entrar.")
         self._start_cooldown()
 
     def _session_renewed(self, token_before) -> bool:
@@ -109,42 +113,15 @@ class LoginDialog(QDialog):
             return
         self.login_button.setEnabled(False)
         self.signup_button.setEnabled(False)
-        self.message_label.setText("Cadastrando...")
+        self._set_message("Cadastrando...")
         token_before = self.license_manager.section.get("refresh_token")
         self.license_manager.signup(*creds)
         self.on_save()
-        if not self._session_renewed(token_before):
-            self.message_label.setText(self.license_manager.message or "Não foi possível cadastrar.")
-            self._start_cooldown()
-            return
-        url = self.license_manager.start_checkout()
-        self.on_save()
-        if url:
-            webbrowser.open(url)
-            self.message_label.setText(
-                "Conta criada! Finalize o pagamento na aba que abriu no navegador e "
-                "depois clique em Entrar aqui."
-            )
+        if self._session_renewed(token_before):
+            self._set_message("Cadastro realizado com sucesso!", success=True)
         else:
-            checkout_error = self.license_manager.message or "erro desconhecido"
-            self.message_label.setText(
-                f"Conta criada, mas não foi possível abrir o pagamento agora ({checkout_error}). "
-                "Feche esta janela e clique em Entrar para tentar novamente."
-            )
+            self._set_message(self.license_manager.message or "Não foi possível cadastrar.")
         self._start_cooldown()
-
-    def _maybe_offer_checkout(self) -> None:
-        if not self.license_manager.logged_in:
-            return
-        if self.license_manager.section.get("status") == "active":
-            return
-        url = self.license_manager.start_checkout()
-        if url:
-            webbrowser.open(url)
-            self.message_label.setText(
-                "Login ok, mas sem assinatura ativa. Abrimos o pagamento no navegador - "
-                "finalize e clique em Entrar novamente."
-            )
 
 
 def prompt_login(license_manager: LicenseManager, on_save, parent=None) -> bool:
