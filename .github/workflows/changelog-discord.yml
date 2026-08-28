@@ -43,6 +43,23 @@ jobs:
             RANGE=""
           fi
 
+          # Este changelog e so sobre o app desktop (o que o auto-update
+          # instala) - commits que so mexem em backend/bot do Discord/scripts
+          # internos nao dizem nada pro usuario final e nao devem aparecer
+          # aqui. So entra commit que toca pelo menos um arquivo dentro dessas
+          # pastas (o codigo que de fato vai pro .exe).
+          APP_PATH_REGEX='^(core/|gui/|functions/|main\.py$)'
+
+          only_app_commits() {
+            while IFS= read -r sha; do
+              [ -z "$sha" ] && continue
+              if git diff-tree --no-commit-id --name-only -r "$sha" | grep -qE "$APP_PATH_REGEX"; then
+                git log -1 --pretty=format:'%s' "$sha"
+                echo
+              fi
+            done
+          }
+
           # Prefixo de commit convencional (feat:, fix:, etc.) e commits de bump
           # de versao ("release: ...") nao dizem nada pro usuario final - o sed
           # tira o prefixo e o grep -v filtra os releases antes de formatar.
@@ -53,10 +70,12 @@ jobs:
           }
 
           if [ -n "$RANGE" ]; then
-            COMMITS=$(git log "$RANGE" --no-merges --pretty=format:'%s' | format_subjects || true)
+            SHAS=$(git log "$RANGE" --no-merges --pretty=format:'%H')
           else
-            COMMITS=$(git log -n 20 "$TAG_NAME" --no-merges --pretty=format:'%s' | format_subjects || true)
+            SHAS=$(git log -n 20 "$TAG_NAME" --no-merges --pretty=format:'%H')
           fi
+
+          COMMITS=$(printf '%s\n' "$SHAS" | only_app_commits | format_subjects || true)
 
           if [ -z "$COMMITS" ]; then
             echo "Nenhum commit relevante encontrado, pulando post."
