@@ -116,8 +116,11 @@ class TargetWorker(BaseWorker):
         if not self.attack_key:
             raise ValueError("Tecla de ataque não configurada.")
         self.attack_check_delay = float(self.config.get("attack_check_delay", 0.5))
+        self.max_unconfirmed_attacks = int(self.config.get("max_unconfirmed_attacks", 5))
 
         self._last_warning = ""
+        self._empty_score_failures = 0
+        self._unconfirmed_attacks = 0
 
         self.log(
             f"Target iniciado (tecla de ataque='{self.attack_key}', "
@@ -152,11 +155,18 @@ class TargetWorker(BaseWorker):
     def is_battle_list_empty(self) -> bool:
         score = self.battle_list_empty_score()
         if score is None:
+            self._empty_score_failures += 1
+            if self._empty_score_failures >= 3:
+                raise RuntimeError(
+                    "Modelo de lista vazia maior que a região configurada - "
+                    "reconfigure a região/modelo da Battle List antes de continuar."
+                )
             self.warn_once(
                 "AVISO: modelo de lista vazia maior que a região configurada - "
                 "recalibre a região da Battle List ou o modelo."
             )
             return False
+        self._empty_score_failures = 0
         return score >= self.empty_threshold
 
     def is_attacking(self) -> bool:
@@ -199,6 +209,16 @@ class TargetWorker(BaseWorker):
                     f"Ataque #{self.counter}: tecla '{self.attack_key}' pressionada - "
                     f"atacando={'sim' if attacking else 'não confirmado'}."
                 )
+                if attacking:
+                    self._unconfirmed_attacks = 0
+                else:
+                    self._unconfirmed_attacks += 1
+                    if self._unconfirmed_attacks >= self.max_unconfirmed_attacks:
+                        raise RuntimeError(
+                            f"{self.max_unconfirmed_attacks} ataques seguidos sem confirmação - "
+                            "provavelmente a região da Battle List/cor de ataque não bate mais "
+                            "com a posição atual do jogo. Reconfigure antes de continuar."
+                        )
 
             while not self.stopped:
                 if not self.wait_for_higher_priority():
