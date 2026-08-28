@@ -116,7 +116,7 @@ class TargetWorker(BaseWorker):
         if not self.attack_key:
             raise ValueError("Tecla de ataque não configurada.")
         self.attack_check_delay = float(self.config.get("attack_check_delay", 0.5))
-        self.max_unconfirmed_attacks = int(self.config.get("max_unconfirmed_attacks", 5))
+        self.max_unconfirmed_attacks = int(self.config.get("max_unconfirmed_attacks", 10))
 
         self._last_warning = ""
         self._empty_score_failures = 0
