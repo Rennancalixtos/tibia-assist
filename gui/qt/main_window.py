@@ -43,7 +43,7 @@ class MainWindow(QMainWindow):
         content_layout.setSpacing(12)
         root_layout.addWidget(content, 1)
 
-        self.log_overlay = LogOverlay()
+        self.log_overlay = LogOverlay(hwnd_resolver=controller.resolve_game_window_hwnd)
 
         self.stack = QStackedWidget()
         content_layout.addWidget(self.stack, 1)

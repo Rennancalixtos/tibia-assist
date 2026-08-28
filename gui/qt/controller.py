@@ -165,6 +165,9 @@ class Controller(QObject):
         except Exception:
             return None
 
+    def resolve_game_window_hwnd(self):
+        return self._resolve_background_hwnd()
+
     def pick_background_window(self, on_status) -> str | None:
         on_status("Clique em qualquer ponto da janela do jogo...")
         point = self.select_point("Clique na janela do jogo (para o modo background)")
