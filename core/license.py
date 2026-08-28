@@ -14,7 +14,7 @@ try:
 except ImportError:
     win32crypt = None
 
-REQUEST_TIMEOUT = 10
+REQUEST_TIMEOUT = 20
 
 _DPAPI_PREFIX = "dpapi:"
 

@@ -86,14 +86,20 @@ class LoginDialog(QDialog):
         self.login_button.setEnabled(False)
         self.signup_button.setEnabled(False)
         self.message_label.setText("Entrando...")
+        token_before = self.license_manager.section.get("refresh_token")
         ok = self.license_manager.login(*creds)
         self.on_save()
         if ok:
             self.accept()
             return
         self.message_label.setText(self.license_manager.message or "Não foi possível entrar.")
-        self._maybe_offer_checkout()
+        if self._session_renewed(token_before):
+            self._maybe_offer_checkout()
         self._start_cooldown()
+
+    def _session_renewed(self, token_before) -> bool:
+        token_after = self.license_manager.section.get("refresh_token")
+        return bool(token_after) and token_after != token_before
 
     def _signup(self) -> None:
         if not self.signup_button.isEnabled():
@@ -104,9 +110,15 @@ class LoginDialog(QDialog):
         self.login_button.setEnabled(False)
         self.signup_button.setEnabled(False)
         self.message_label.setText("Cadastrando...")
+        token_before = self.license_manager.section.get("refresh_token")
         self.license_manager.signup(*creds)
         self.on_save()
+        if not self._session_renewed(token_before):
+            self.message_label.setText(self.license_manager.message or "Não foi possível cadastrar.")
+            self._start_cooldown()
+            return
         url = self.license_manager.start_checkout()
+        self.on_save()
         if url:
             webbrowser.open(url)
             self.message_label.setText(
@@ -114,7 +126,11 @@ class LoginDialog(QDialog):
                 "depois clique em Entrar aqui."
             )
         else:
-            self.message_label.setText(self.license_manager.message or "Não foi possível iniciar o pagamento.")
+            checkout_error = self.license_manager.message or "erro desconhecido"
+            self.message_label.setText(
+                f"Conta criada, mas não foi possível abrir o pagamento agora ({checkout_error}). "
+                "Feche esta janela e clique em Entrar para tentar novamente."
+            )
         self._start_cooldown()
 
     def _maybe_offer_checkout(self) -> None:
