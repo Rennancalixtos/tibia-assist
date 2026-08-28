@@ -114,6 +114,11 @@ create table if not exists public.trial_requests (
 
 create index if not exists trial_requests_status_idx on public.trial_requests (status);
 
+-- Guarda o token da interacao original (valido por 15min) pra poder editar a
+-- propria mensagem ephemeral do pedido quando o admin decidir, em vez de
+-- mandar DM (nunca mandamos DM pro usuario final).
+alter table public.trial_requests add column if not exists interaction_token text;
+
 alter table public.trial_requests enable row level security;
 
 grant select, insert, update, delete on public.trial_requests to service_role;

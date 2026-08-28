@@ -3,7 +3,7 @@ import crypto from "crypto";
 import { Payment } from "mercadopago";
 import { mercadoPagoClient } from "@/lib/mercadopago";
 import { supabaseAdmin } from "@/lib/supabase";
-import { sendDirectMessage } from "@/lib/discord/core";
+import { editOriginalInteractionMessage } from "@/lib/discord/core";
 
 export const dynamic = "force-dynamic";
 
@@ -68,11 +68,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true });
   }
 
-  // Formato "userId:planId" (checkout via link, legado) ou
-  // "userId:planId:discordUserId" (fluxo atual, PIX via Discord - o terceiro
-  // campo so existe nesse segundo caso, usado so pra mandar a DM de confirmacao).
+  // Formato "userId:planId" (checkout por link, legado) ou
+  // "userId:planId:discordUserId" (fluxo atual PIX via Discord - o terceiro
+  // campo nao e mais usado aqui, so foi necessario historicamente pra DM;
+  // a confirmacao hoje e so via edicao da mensagem original, usando o
+  // interaction_token guardado em mercadopago_payments).
   const externalReference = payment.external_reference ?? "";
-  const [userId, planId, discordUserId] = externalReference.split(":");
+  const [userId, planId] = externalReference.split(":");
 
   if (!userId || !planId) {
     console.error("Pagamento aprovado sem external_reference valido", payment.id);
@@ -149,29 +151,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Falha ao gravar licenca." }, { status: 500 });
   }
 
-  const confirmationText = `Pagamento confirmado! Sua licenca do EasyF de ${plan.days} dias foi ativada.`;
-  let editedOriginalMessage = false;
-
+  // Edita a propria mensagem do QR code no chat - so funciona dentro de ate
+  // 15min da interacao original (limite do Discord para este endpoint).
+  // Passado esse prazo, so loga o erro - nunca cai pra DM (decisao do
+  // produto: jamais mandar DM pro usuario final).
   if (interactionToken) {
-    // Edita a propria mensagem do QR code - so funciona dentro de ate 15min
-    // da interacao original (limite do Discord para esse endpoint). Passado
-    // esse prazo, cai pro fallback de DM abaixo.
-    const editResponse = await fetch(
-      `https://discord.com/api/v10/webhooks/${process.env.DISCORD_APPLICATION_ID}/${interactionToken}/messages/@original`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: confirmationText, embeds: [], components: [], attachments: [] }),
-      }
-    );
-    editedOriginalMessage = editResponse.ok;
-    if (!editResponse.ok) {
-      console.error("Falha ao editar mensagem original do PIX (janela de 15min provavelmente expirou)", await editResponse.text());
-    }
-  }
-
-  if (discordUserId && !editedOriginalMessage) {
-    await sendDirectMessage(discordUserId, confirmationText);
+    await editOriginalInteractionMessage(interactionToken, {
+      content: `Pagamento confirmado! Sua licenca do EasyF de ${plan.days} dias foi ativada.`,
+      embeds: [],
+      components: [],
+      attachments: [],
+    });
   }
 
   return NextResponse.json({ received: true });

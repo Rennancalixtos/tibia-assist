@@ -94,27 +94,37 @@ export function modalSubmitValue(interaction: any, customId: string): string {
 }
 
 /**
- * Envia uma DM best-effort pro usuario (aprovacao/rejeicao de teste,
- * confirmacao de pagamento, etc). Usuarios que bloqueiam DM ou ja deixaram o
- * servidor fazem isso falhar silenciosamente - nunca deve derrubar o fluxo
- * principal por causa disso.
+ * Edita a mensagem de resposta original de uma interacao (ephemeral ou nao)
+ * via webhook - unico jeito de notificar o usuario sem DM quando a decisao
+ * (aprovacao de teste, confirmacao de pagamento) acontece depois da resposta
+ * inicial. So funciona por ate 15min apos a interacao original (limite do
+ * Discord para este endpoint) - passado isso, retorna false e NAO ha
+ * fallback por DM (decisao do produto: nunca mandar DM pro usuario).
  */
-export async function sendDirectMessage(discordUserId: string, content: string): Promise<void> {
+export async function editOriginalInteractionMessage(
+  interactionToken: string,
+  payload: Record<string, unknown>
+): Promise<boolean> {
+  const applicationId = process.env.DISCORD_APPLICATION_ID;
+  if (!applicationId) {
+    return false;
+  }
   try {
-    const dmChannelResponse = await discordApi("/users/@me/channels", {
-      method: "POST",
-      body: JSON.stringify({ recipient_id: discordUserId }),
-    });
-    if (!dmChannelResponse.ok) {
-      return;
+    const response = await fetch(
+      `${DISCORD_API_BASE}/webhooks/${applicationId}/${interactionToken}/messages/@original`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }
+    );
+    if (!response.ok) {
+      console.error("Falha ao editar mensagem original da interacao", await response.text());
     }
-    const dmChannel = await dmChannelResponse.json();
-    await discordApi(`/channels/${dmChannel.id}/messages`, {
-      method: "POST",
-      body: JSON.stringify({ content }),
-    });
+    return response.ok;
   } catch (err) {
-    console.error("Falha ao enviar DM", err);
+    console.error("Falha ao editar mensagem original da interacao", err);
+    return false;
   }
 }
 
