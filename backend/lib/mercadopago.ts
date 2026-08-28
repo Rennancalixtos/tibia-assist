@@ -76,6 +76,18 @@ export async function createCheckoutForUser(userId: string, planId: string): Pro
         pending: `${baseUrl}/`,
       },
       notification_url: `${baseUrl}/api/mercadopago/webhook`,
+      // So aceita Pix (bank_transfer) mesmo neste checkout por link legado -
+      // "Dinheiro em conta" nao pode ser excluido pela API, mas nao e um
+      // meio de pagamento externo entao nao representa o mesmo risco.
+      payment_methods: {
+        excluded_payment_types: [
+          { id: "credit_card" },
+          { id: "debit_card" },
+          { id: "prepaid_card" },
+          { id: "ticket" },
+          { id: "atm" },
+        ],
+      },
     },
   });
 
@@ -106,6 +118,8 @@ export type PixResult =
  * avisar a pessoa certa por DM, sem depender de nada vindo do client no
  * momento da confirmacao.
  */
+const PIX_EXPIRATION_MINUTES = 15;
+
 export async function createPixPaymentForUser(
   userId: string,
   planId: string,
@@ -141,6 +155,7 @@ export async function createPixPaymentForUser(
         payer: { email },
         external_reference: `${userId}:${row.plan_id}:${discordUserId}`,
         notification_url: `${baseUrl}/api/mercadopago/webhook`,
+        date_of_expiration: new Date(Date.now() + PIX_EXPIRATION_MINUTES * 60_000).toISOString(),
       },
     });
   } catch (err) {

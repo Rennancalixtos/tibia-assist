@@ -1,10 +1,10 @@
 import {
   InteractionResponseType,
   discordApi,
+  editOriginalInteractionMessage,
   emailModal,
   ephemeralReply,
   modalSubmitValue,
-  sendDirectMessage,
 } from "@/lib/discord/core";
 import { resolveAccountByEmail } from "@/lib/discord/account-link";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -56,6 +56,7 @@ export async function handleTrialModalSubmit(interaction: any) {
       user_id: account.userId,
       discord_user_id: discordUserId,
       status: "pending",
+      interaction_token: interaction?.token ?? null,
     })
     .select("id")
     .single();
@@ -114,7 +115,7 @@ export async function handleTrialModalSubmit(interaction: any) {
   }
 
   return ephemeralReply(
-    "Seu pedido de teste gratis foi enviado para aprovacao. Voce recebera uma mensagem direta (DM) assim que houver uma decisao."
+    "Seu pedido de teste gratis foi enviado para aprovacao. Assim que um admin decidir, esta mensagem sera atualizada automaticamente."
   );
 }
 
@@ -139,7 +140,7 @@ export async function handleTrialComponent(interaction: any, customId: string) {
 
   const { data: trialRequest, error: fetchError } = await supabaseAdmin
     .from("trial_requests")
-    .select("id, user_id, discord_user_id, status")
+    .select("id, user_id, discord_user_id, status, interaction_token")
     .eq("id", requestId)
     .maybeSingle();
 
@@ -195,10 +196,13 @@ export async function handleTrialComponent(interaction: any, customId: string) {
       );
     }
 
-    await sendDirectMessage(
-      trialRequest.discord_user_id,
-      `Seu teste gratis do EasyF foi aprovado! Voce tem ${hoursGranted} horas de acesso a partir de agora.`
-    );
+    if (trialRequest.interaction_token) {
+      await editOriginalInteractionMessage(trialRequest.interaction_token, {
+        content: `Seu teste gratis foi aprovado! Voce tem ${hoursGranted} horas de acesso a partir de agora.`,
+        embeds: [],
+        components: [],
+      });
+    }
 
     return updateMessageResponse(`Aprovado por <@${clickerId}>.`);
   }
@@ -220,7 +224,13 @@ export async function handleTrialComponent(interaction: any, customId: string) {
     return ephemeralReply("Essa solicitacao ja foi decidida por outra pessoa.");
   }
 
-  await sendDirectMessage(trialRequest.discord_user_id, "Seu pedido de teste gratis no EasyF foi rejeitado.");
+  if (trialRequest.interaction_token) {
+    await editOriginalInteractionMessage(trialRequest.interaction_token, {
+      content: "Seu pedido de teste gratis foi rejeitado.",
+      embeds: [],
+      components: [],
+    });
+  }
 
   return updateMessageResponse(`Rejeitado por <@${clickerId}>.`);
 }

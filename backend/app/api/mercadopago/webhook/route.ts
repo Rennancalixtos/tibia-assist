@@ -3,7 +3,7 @@ import crypto from "crypto";
 import { Payment } from "mercadopago";
 import { mercadoPagoClient } from "@/lib/mercadopago";
 import { supabaseAdmin } from "@/lib/supabase";
-import { sendDirectMessage } from "@/lib/discord/core";
+import { editOriginalInteractionMessage } from "@/lib/discord/core";
 
 export const dynamic = "force-dynamic";
 
@@ -68,11 +68,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true });
   }
 
-  // Formato "userId:planId" (checkout via link, legado) ou
-  // "userId:planId:discordUserId" (fluxo atual, PIX via Discord - o terceiro
-  // campo so existe nesse segundo caso, usado so pra mandar a DM de confirmacao).
+  // Formato "userId:planId" (checkout por link, legado) ou
+  // "userId:planId:discordUserId" (fluxo atual PIX via Discord - o terceiro
+  // campo nao e mais usado aqui, so foi necessario historicamente pra DM;
+  // a confirmacao hoje e so via edicao da mensagem original, usando o
+  // interaction_token guardado em mercadopago_payments).
   const externalReference = payment.external_reference ?? "";
-  const [userId, planId, discordUserId] = externalReference.split(":");
+  const [userId, planId] = externalReference.split(":");
 
   if (!userId || !planId) {
     console.error("Pagamento aprovado sem external_reference valido", payment.id);
@@ -81,16 +83,43 @@ export async function POST(request: Request) {
 
   const paymentId = String(payment.id);
 
-  const { error: insertError } = await supabaseAdmin
+  // A linha pode ja existir (inserida com status 'pending' na hora de criar
+  // o PIX, carregando o interaction_token) ou nao (fluxo legado de checkout
+  // por link, que nunca insere antecipadamente) - trata os dois casos.
+  const { data: existingPayment } = await supabaseAdmin
     .from("mercadopago_payments")
-    .insert({ payment_id: paymentId, user_id: userId, plan_id: planId });
+    .select("status, interaction_token")
+    .eq("payment_id", paymentId)
+    .maybeSingle();
 
-  if (insertError) {
-    if (insertError.code === "23505") {
+  let interactionToken: string | null = null;
+
+  if (existingPayment) {
+    if (existingPayment.status === "processed") {
       return NextResponse.json({ received: true });
     }
-    console.error("Falha ao registrar pagamento do Mercado Pago", insertError);
-    return NextResponse.json({ error: "Falha ao registrar pagamento." }, { status: 500 });
+    interactionToken = existingPayment.interaction_token;
+    const { error: updateError, count } = await supabaseAdmin
+      .from("mercadopago_payments")
+      .update({ status: "processed" }, { count: "exact" })
+      .eq("payment_id", paymentId)
+      .eq("status", "pending");
+
+    if (updateError || !count) {
+      return NextResponse.json({ received: true });
+    }
+  } else {
+    const { error: insertError } = await supabaseAdmin
+      .from("mercadopago_payments")
+      .insert({ payment_id: paymentId, user_id: userId, plan_id: planId, status: "processed" });
+
+    if (insertError) {
+      if (insertError.code === "23505") {
+        return NextResponse.json({ received: true });
+      }
+      console.error("Falha ao registrar pagamento do Mercado Pago", insertError);
+      return NextResponse.json({ error: "Falha ao registrar pagamento." }, { status: 500 });
+    }
   }
 
   const { data: plan, error: planError } = await supabaseAdmin
@@ -122,11 +151,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Falha ao gravar licenca." }, { status: 500 });
   }
 
-  if (discordUserId) {
-    await sendDirectMessage(
-      discordUserId,
-      `Pagamento confirmado! Sua licenca do EasyF de ${plan.days} dias foi ativada.`
-    );
+  // Edita a propria mensagem do QR code no chat - so funciona dentro de ate
+  // 15min da interacao original (limite do Discord para este endpoint).
+  // Passado esse prazo, so loga o erro - nunca cai pra DM (decisao do
+  // produto: jamais mandar DM pro usuario final).
+  if (interactionToken) {
+    await editOriginalInteractionMessage(interactionToken, {
+      content: `Pagamento confirmado! Sua licenca do EasyF de ${plan.days} dias foi ativada.`,
+      embeds: [],
+      components: [],
+      attachments: [],
+    });
   }
 
   return NextResponse.json({ received: true });
