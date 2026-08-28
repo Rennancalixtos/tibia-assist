@@ -8,6 +8,7 @@ _BORDER_COLOR = "#39ff14"
 _BORDER_THICKNESS = 2
 _LABEL_BG = "#1a1d24"
 _LABEL_FG = "#39ff14"
+_GAP_ABOVE_LOG = 6
 
 
 class _RegionMarker(QWidget):
@@ -40,29 +41,24 @@ class _ValueLabel(QWidget):
 
 
 class ManaOverlay:
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, log_overlay=None):
         self._parent = parent
+        self._log_overlay = log_overlay
         self._marker: _RegionMarker | None = None
         self._label: _ValueLabel | None = None
         self._region: tuple[int, int, int, int] | None = None
-        self._point: tuple[int, int] | None = None
 
     def configure_region(self, region) -> None:
         self._region = tuple(region) if region and len(region) == 4 else None
         if self._marker is not None:
             self._layout_marker()
 
-    def configure_display_point(self, point) -> None:
-        self._point = tuple(point) if point and len(point) == 2 else None
-        if self._label is not None:
-            self._layout_label()
-
     def show(self) -> None:
         if self._region and self._marker is None:
             self._marker = _RegionMarker(self._parent)
             self._layout_marker()
             self._marker.show()
-        if self._point and self._label is None:
+        if self._log_overlay is not None and self._label is None:
             self._label = _ValueLabel(self._parent)
             self._layout_label()
             self._label.show()
@@ -79,6 +75,7 @@ class ManaOverlay:
     def update_value(self, value) -> None:
         if self._label is not None:
             self._label.label.setText(f"Mana: {value}" if value is not None else "Mana: ?")
+            self._layout_label()
 
     def _layout_marker(self) -> None:
         if self._marker is None or not self._region:
@@ -88,8 +85,10 @@ class ManaOverlay:
         self._marker.setGeometry(x - t, y - t, w + 2 * t, h + 2 * t)
 
     def _layout_label(self) -> None:
-        if self._label is None or not self._point:
+        if self._label is None or self._log_overlay is None:
             return
-        x, y = self._point
         self._label.adjustSize()
-        self._label.move(x, y)
+        log_geo = self._log_overlay.geometry()
+        x = log_geo.x()
+        y = log_geo.y() - self._label.height() - _GAP_ABOVE_LOG
+        self._label.move(max(0, x), max(0, y))

@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.config import ASSETS_DIR
-from core.screen_capture import ScreenCapture, is_valid_region, save_image
+from core.screen_capture import ScreenCapture, is_valid_region, load_image, save_image
 from functions.target import TargetWorker
 from gui.qt.components.action_button import ActionButton
 from gui.qt.components.hotkey_button import HotkeyButton
@@ -88,9 +88,7 @@ class TargetModuleView:
         empty_row = QHBoxLayout()
         button_empty = ActionButton("Capturar Battle vazia", variant="secondary")
         button_empty.clicked.connect(self.capture_empty_template)
-        self.label_empty_template = QLabel(
-            "Modelo calibrado" if self.cfg.get("battle_empty_template") else "não calibrado"
-        )
+        self.label_empty_template = QLabel(self._empty_template_label_text())
         empty_row.addWidget(button_empty)
         empty_row.addWidget(self.label_empty_template)
         empty_row.addWidget(
@@ -212,6 +210,16 @@ class TargetModuleView:
         self.config_dialog.raise_()
         self.config_dialog.activateWindow()
 
+    def _empty_template_label_text(self) -> str:
+        path = self.cfg.get("battle_empty_template")
+        if not path:
+            return "não calibrado"
+        image = load_image(path)
+        if image is None:
+            return "não calibrado (arquivo do modelo não encontrado)"
+        height, width = image.shape[:2]
+        return f"Modelo salvo ({width}x{height} px)"
+
     def pick_battle_list_region(self) -> None:
         region = self.controller.select_region(
             "Arraste cobrindo toda a área visível da Battle List (cabeçalho + linhas)  -  ESC cancela"
@@ -235,7 +243,7 @@ class TargetModuleView:
         path = os.path.join(ASSETS_DIR, "target_battle_empty.png")
         save_image(path, frame)
         self.cfg["battle_empty_template"] = path
-        self.label_empty_template.setText(f"Modelo salvo ({region[2]}x{region[3]} px)")
+        self.label_empty_template.setText(self._empty_template_label_text())
         self.controller.config_store.save()
         self.controller.log(f"Modelo de lista vazia salvo em {path}", source="target")
 

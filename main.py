@@ -2,6 +2,17 @@ from __future__ import annotations
 
 import sys
 
+if sys.platform == "win32":
+    import ctypes
+
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
 REQUIRED = [
     ("mss", "mss"),
     ("cv2", "opencv-python"),

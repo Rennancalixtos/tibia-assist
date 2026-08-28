@@ -6,8 +6,8 @@ from PySide6.QtWidgets import QButtonGroup, QLabel, QPushButton, QVBoxLayout, QW
 from gui.qt.components.session_info import SessionInfoCard
 
 NAV_ITEMS = (
-    ("dashboard", "Dashboard"),
-    ("settings", "Configurações"),
+    ("dashboard", "TOOLS"),
+    ("settings", "CONFIGS/PRESETS"),
     ("logs", "Logs"),
     ("about", "Sobre"),
 )

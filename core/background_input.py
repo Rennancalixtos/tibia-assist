@@ -56,6 +56,18 @@ def find_window_by_title(substring: str) -> int | None:
     return found[0] if found else None
 
 
+def client_screen_rect(hwnd: int) -> tuple[int, int, int, int] | None:
+    if not hwnd or not win32gui.IsWindow(hwnd) or win32gui.IsIconic(hwnd):
+        return None
+    left, top, right, bottom = win32gui.GetClientRect(hwnd)
+    left, top = win32gui.ClientToScreen(hwnd, (left, top))
+    right, bottom = win32gui.ClientToScreen(hwnd, (right, bottom))
+    width, height = right - left, bottom - top
+    if width <= 0 or height <= 0:
+        return None
+    return left, top, width, height
+
+
 def window_title_at_point(x: int, y: int) -> tuple[int, str] | None:
     try:
         child_hwnd = win32gui.WindowFromPoint((int(x), int(y)))

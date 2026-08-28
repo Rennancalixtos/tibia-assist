@@ -51,9 +51,8 @@ class RuneMakerModuleView:
         self.card.stop_requested.connect(self.stop)
         self.card.configure_requested.connect(self.open_config_dialog)
 
-        self.mana_overlay = ManaOverlay(main_window)
+        self.mana_overlay = ManaOverlay(main_window, log_overlay=main_window.log_overlay)
         self.mana_overlay.configure_region(self.cfg.get("mana_region"))
-        self.mana_overlay.configure_display_point(self.cfg.get("mana_display_point"))
 
         self._build_config_dialog()
 
@@ -275,17 +274,15 @@ class RuneMakerModuleView:
         test_ocr_row.addStretch(1)
         layout.addLayout(test_ocr_row)
 
-        mana_point_row = QHBoxLayout()
-        btn_pick_mana_point = ActionButton("Selecionar onde exibir o valor da mana...", variant="secondary")
-        btn_pick_mana_point.clicked.connect(self.pick_mana_display_point)
-        mana_point_row.addWidget(btn_pick_mana_point)
-        self.label_mana_point = QLabel(region_text(self.cfg.get("mana_display_point")))
-        mana_point_row.addWidget(self.label_mana_point)
-        mana_point_row.addWidget(
-            InfoIcon("Overlay sobre a tela do jogo: marca a região acima e mostra o valor lido nesse ponto.")
+        mana_hint_row = QHBoxLayout()
+        mana_hint_row.addWidget(
+            InfoIcon(
+                "Overlay sobre a tela do jogo: marca a região acima e mostra o valor lido logo "
+                "acima do log na tela do jogo."
+            )
         )
-        mana_point_row.addStretch(1)
-        layout.addLayout(mana_point_row)
+        mana_hint_row.addStretch(1)
+        layout.addLayout(mana_hint_row)
 
         return box
 
@@ -394,18 +391,6 @@ class RuneMakerModuleView:
         self.mana_overlay.configure_region(region)
         self.controller.config_store.save()
         self.log(f"Região de {label} definida: {region_text(region)}")
-
-    def pick_mana_display_point(self) -> None:
-        point = self.controller.select_point(
-            "Clique onde exibir o valor da mana durante a automação  -  ESC cancela"
-        )
-        if not point:
-            return
-        self.cfg["mana_display_point"] = list(point)
-        self.label_mana_point.setText(region_text(point))
-        self.mana_overlay.configure_display_point(point)
-        self.controller.config_store.save()
-        self.log(f"Ponto de exibição da mana definido: {region_text(point)}")
 
     def _capture_empty_template(self, slot_key: str, label: str, region_label: QLabel) -> None:
         region = self.controller.select_region(f"Selecione o slot {label} VAZIO  -  ESC cancela")
