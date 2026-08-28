@@ -30,7 +30,17 @@ async function openTicket(interaction: any) {
     .maybeSingle();
 
   if (existing) {
-    return ephemeralReply(`Voce ja tem um ticket aberto: <#${existing.channel_id}>`);
+    // O canal pode ter sido apagado manualmente (sem passar pelo botao
+    // "Fechar Ticket") - confirma que ele ainda existe antes de bloquear um
+    // ticket novo; se sumiu, encerra o registro orfao e deixa abrir de novo.
+    const channelStillExists = (await discordApi(`/channels/${existing.channel_id}`)).ok;
+    if (channelStillExists) {
+      return ephemeralReply(`Voce ja tem um ticket aberto: <#${existing.channel_id}>`);
+    }
+    await supabaseAdmin
+      .from("support_tickets")
+      .update({ status: "closed", closed_at: new Date().toISOString() })
+      .eq("channel_id", existing.channel_id);
   }
 
   const guildId = process.env.DISCORD_GUILD_ID;
