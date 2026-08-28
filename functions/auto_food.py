@@ -2,27 +2,26 @@ from __future__ import annotations
 
 import os
 
-import pyautogui as pg
+import cv2
+import numpy as np
 import win32gui
-from PIL import Image
 
 from core import background_input
 from core.config import RESOURCE_DIR
+from core.screen_capture import ScreenCapture, load_image
 from core.worker import BaseWorker
-
-pg.useImageNotFoundException(False)
 
 ICON_NAMES = ["meat1", "meat2", "meat3", "meat4", "meat5", "whitemushrooms", "ham1", "ham2", "ham3", "ham4", "ham5", "fish1"]
 
 BADGE_HEIGHT_RATIO = 0.35
 
 
-def _load_icon_without_badge(path: str) -> Image.Image:
-    with Image.open(path) as img:
-        img = img.convert("RGB")
-        width, height = img.size
-        crop_height = max(1, int(height * (1 - BADGE_HEIGHT_RATIO)))
-        return img.crop((0, 0, width, crop_height)).copy()
+def _load_icon_without_badge(path: str) -> np.ndarray:
+    icon = load_image(path)
+    if icon is None:
+        raise ValueError(f"Ícone de comida não encontrado: {path}")
+    crop_height = max(1, int(icon.shape[0] * (1 - BADGE_HEIGHT_RATIO)))
+    return icon[:crop_height, :, :].copy()
 
 
 class AutoFoodWorker(BaseWorker):
@@ -42,9 +41,15 @@ class AutoFoodWorker(BaseWorker):
             name: _load_icon_without_badge(os.path.join(RESOURCE_DIR, "img", "food", f"{name}.png"))
             for name in ICON_NAMES
         }
+        self.min_region_width = max(icon.shape[1] for icon in self.icons.values())
+        self.min_region_height = max(icon.shape[0] for icon in self.icons.values())
+        self.capture = ScreenCapture()
         self.log("AutoFood iniciado (clique em segundo plano, sem fallback pro mouse real).")
 
     def teardown(self) -> None:
+        capture = getattr(self, "capture", None)
+        if capture is not None:
+            capture.close()
         self.log(f"AutoFood finalizado. Comidas usadas na sessão: {self.counter}.")
 
     def _click(self, x: int, y: int) -> None:
@@ -52,18 +57,55 @@ class AutoFoodWorker(BaseWorker):
             raise RuntimeError("Janela do jogo não encontrada (hwnd inválido).")
         background_input.post_click(self.hwnd, x, y, "right")
 
+    def _client_region(self) -> tuple[int, int, int, int] | None:
+        if not win32gui.IsWindow(self.hwnd):
+            raise RuntimeError("Janela do jogo não encontrada (hwnd inválido).")
+        rect = background_input.client_screen_rect(self.hwnd)
+        if rect is None:
+            return None
+        _left, _top, width, height = rect
+        if width < self.min_region_width or height < self.min_region_height:
+            return None
+        return rect
+
+    def _locate_icon(self, frame: np.ndarray, icon: np.ndarray) -> tuple[int, int] | None:
+        if frame.shape[0] < icon.shape[0] or frame.shape[1] < icon.shape[1]:
+            return None
+        result = cv2.matchTemplate(frame, icon, cv2.TM_CCOEFF_NORMED)
+        _min_val, max_val, _min_loc, max_loc = cv2.minMaxLoc(result)
+        if max_val < self.confidence:
+            return None
+        height, width = icon.shape[:2]
+        return max_loc[0] + width // 2, max_loc[1] + height // 2
+
     def loop(self) -> None:
+        region_indisponivel_avisado = False
         while not self.stopped:
             if not self.wait_while_paused():
                 return
 
+            region = self._client_region()
+            if region is None:
+                if not region_indisponivel_avisado:
+                    self.log(
+                        "Janela do jogo minimizada ou sem área visível no momento - "
+                        "aguardando ela voltar pra checar a bolsa."
+                    )
+                    region_indisponivel_avisado = True
+                if not self.sleep(self.check_interval):
+                    return
+                continue
+            region_indisponivel_avisado = False
+
+            frame = self.capture.grab(region)
             clicked = False
             for nome, icon in self.icons.items():
                 if not self.sleep(self.check_interval):
                     return
-                localizar_na_tela = pg.locateCenterOnScreen(icon, confidence=self.confidence)
-                if localizar_na_tela:
-                    self._click(localizar_na_tela.x, localizar_na_tela.y)
+                match = self._locate_icon(frame, icon)
+                if match:
+                    rel_x, rel_y = match
+                    self._click(region[0] + rel_x, region[1] + rel_y)
                     self.bump_counter()
                     self.log(f"Comeu {nome} (#{self.counter}). Próxima em {self.eat_cooldown:.0f}s.")
                     clicked = True
