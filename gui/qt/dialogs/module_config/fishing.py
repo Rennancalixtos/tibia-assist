@@ -32,6 +32,7 @@ from functions.auto_fishing import (
 from gui.qt.components.action_button import ActionButton
 from gui.qt.components.info_tooltip import InfoIcon
 from gui.qt.components.module_card import ModuleCard
+from gui.qt.overlays.fishing_warning_overlay import FishingWarningOverlay
 from gui.widgets import parse_float, parse_int, region_text
 
 BUTTON_LABELS = {"right": "direito", "left": "esquerdo"}
@@ -76,6 +77,8 @@ class FishingModuleView:
         self.card.pause_requested.connect(self.toggle_pause)
         self.card.stop_requested.connect(self.stop)
         self.card.configure_requested.connect(self.open_config_dialog)
+
+        self.warning_overlay = FishingWarningOverlay(hwnd_resolver=controller.resolve_game_window_hwnd, parent=main_window)
 
         self.config_dialog = _ConfigDialog(main_window)
         self.config_dialog.setWindowTitle("Configurar - AutoFishing")
@@ -431,9 +434,16 @@ class FishingModuleView:
 
     def on_state(self, state: str) -> None:
         self.card.set_state(state)
+        if state in ("running", "paused"):
+            self.warning_overlay.show()
+        else:
+            self.warning_overlay.hide()
 
     def on_counter(self, value: int) -> None:
         self.card.set_stat("counter", str(value))
+
+    def close_overlays(self) -> None:
+        self.warning_overlay.hide()
 
     def _on_module_event(self, source: str, kind: str, payload) -> None:
         if source != "fishing":
