@@ -20,6 +20,17 @@ import {
 // pelo Discord pra qualquer endpoint de Interactions.
 export const dynamic = "force-dynamic";
 
+// Handlers normalmente devolvem um objeto simples (respondido como JSON), mas
+// respostas com anexo binario (ex: QR code PIX) precisam de um multipart/form
+// -data cru - nesse caso o handler ja devolve um Response pronto, e so
+// repassamos direto em vez de envelopar em NextResponse.json.
+function toHttpResponse(result: any): Response {
+  if (result instanceof Response) {
+    return result;
+  }
+  return NextResponse.json(result);
+}
+
 export async function POST(request: Request) {
   const rawBody = await request.text();
   const signature = request.headers.get("x-signature-ed25519");
@@ -38,10 +49,10 @@ export async function POST(request: Request) {
   if (interaction.type === InteractionType.APPLICATION_COMMAND) {
     const name = interaction.data?.name;
     if (name === TRIAL_COMMAND_NAME) {
-      return NextResponse.json(await handleTrialCommand(interaction));
+      return toHttpResponse(await handleTrialCommand(interaction));
     }
     if (name === PURCHASE_COMMAND_NAME) {
-      return NextResponse.json(await handlePurchaseCommand(interaction));
+      return toHttpResponse(await handlePurchaseCommand(interaction));
     }
     return NextResponse.json(ephemeralReply("Comando desconhecido."));
   }
@@ -49,20 +60,20 @@ export async function POST(request: Request) {
   if (interaction.type === InteractionType.MODAL_SUBMIT) {
     const customId: string = interaction.data?.custom_id ?? "";
     if (customId.startsWith("trial:")) {
-      return NextResponse.json(await handleTrialModalSubmit(interaction));
+      return toHttpResponse(await handleTrialModalSubmit(interaction));
     }
     if (customId.startsWith("purchase:")) {
-      return NextResponse.json(await handlePurchaseModalSubmit(interaction));
+      return toHttpResponse(await handlePurchaseModalSubmit(interaction));
     }
   }
 
   if (interaction.type === InteractionType.MESSAGE_COMPONENT) {
     const customId: string = interaction.data?.custom_id ?? "";
     if (customId.startsWith("trial:")) {
-      return NextResponse.json(await handleTrialComponent(interaction, customId));
+      return toHttpResponse(await handleTrialComponent(interaction, customId));
     }
     if (customId.startsWith("purchase:")) {
-      return NextResponse.json(await handlePurchaseComponent(interaction, customId));
+      return toHttpResponse(await handlePurchaseComponent(interaction, customId));
     }
   }
 

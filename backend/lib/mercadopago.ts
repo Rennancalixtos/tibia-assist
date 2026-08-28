@@ -1,4 +1,4 @@
-import { MercadoPagoConfig, Preference } from "mercadopago";
+import { MercadoPagoConfig, Preference, Payment } from "mercadopago";
 import { supabaseAdmin } from "./supabase";
 
 /**
@@ -86,4 +86,79 @@ export async function createCheckoutForUser(userId: string, planId: string): Pro
   }
 
   return { url };
+}
+
+export type PixResult =
+  | {
+      paymentId: string;
+      qrCodeText: string;
+      qrCodeBase64: string;
+      expiresAt: string | null;
+    }
+  | { error: string };
+
+/**
+ * Cria um pagamento PIX direto (sem link de checkout, sem outras formas de
+ * pagamento) via API de Payments do Mercado Pago - retorna o QR code (imagem
+ * base64 + codigo copia-e-cola) pra exibir direto no Discord. Dias/preco
+ * sempre vem da tabela `plans`, nunca do client/bot. `external_reference`
+ * carrega `userId:planId:discordUserId` para o webhook confirmar a licenca E
+ * avisar a pessoa certa por DM, sem depender de nada vindo do client no
+ * momento da confirmacao.
+ */
+export async function createPixPaymentForUser(
+  userId: string,
+  planId: string,
+  email: string,
+  discordUserId: string
+): Promise<PixResult> {
+  const { data: plan, error } = await supabaseAdmin
+    .from("plans")
+    .select("plan_id, days, price_cents, active")
+    .eq("plan_id", planId)
+    .maybeSingle();
+
+  if (error || !plan) {
+    return { error: "Plano invalido." };
+  }
+
+  const row = plan as PlanRow;
+
+  if (!row.active) {
+    return { error: "Este plano nao esta disponivel no momento." };
+  }
+
+  const baseUrl = resolveBaseUrl();
+  const payment = new Payment(mercadoPagoClient);
+
+  let result;
+  try {
+    result = await payment.create({
+      body: {
+        transaction_amount: row.price_cents / 100,
+        description: `Licenca EasyF - ${row.days} dias`,
+        payment_method_id: "pix",
+        payer: { email },
+        external_reference: `${userId}:${row.plan_id}:${discordUserId}`,
+        notification_url: `${baseUrl}/api/mercadopago/webhook`,
+      },
+    });
+  } catch (err) {
+    console.error("Falha ao criar pagamento PIX no Mercado Pago", err);
+    return { error: "Nao foi possivel gerar o pagamento PIX. Tente novamente mais tarde." };
+  }
+
+  const transactionData = result.point_of_interaction?.transaction_data;
+
+  if (!result.id || !transactionData?.qr_code || !transactionData?.qr_code_base64) {
+    console.error("Resposta do Mercado Pago sem dados de QR code PIX", result.id, result.status);
+    return { error: "O Mercado Pago nao retornou o QR code PIX. Tente novamente mais tarde." };
+  }
+
+  return {
+    paymentId: String(result.id),
+    qrCodeText: transactionData.qr_code,
+    qrCodeBase64: transactionData.qr_code_base64,
+    expiresAt: result.date_of_expiration ?? null,
+  };
 }
