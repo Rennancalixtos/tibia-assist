@@ -179,6 +179,43 @@ class TargetWorker(BaseWorker):
             return
         self.mouse.press_key(self.attack_key)
 
+    def _attack_once(self) -> bool:
+        self.press_attack_key()
+        if not self.sleep(self.attack_check_delay):
+            return False
+        attacking = self.is_attacking()
+        self.bump_counter()
+        self.log(
+            f"Ataque #{self.counter}: tecla '{self.attack_key}' pressionada - "
+            f"atacando={'sim' if attacking else 'não confirmado'}."
+        )
+        if attacking:
+            self._unconfirmed_attacks = 0
+        else:
+            self._unconfirmed_attacks += 1
+            if self._unconfirmed_attacks >= self.max_unconfirmed_attacks:
+                raise RuntimeError(
+                    f"{self.max_unconfirmed_attacks} ataques seguidos sem confirmação - "
+                    "provavelmente a região da Battle List/cor de ataque não bate mais "
+                    "com a posição atual do jogo. Reconfigure antes de continuar."
+                )
+        return True
+
+    def _engage(self) -> bool:
+        while not self.stopped:
+            if not self.is_attacking():
+                if not self._attack_once():
+                    return False
+            if not self.wait_for_higher_priority():
+                return False
+            if not self.sleep(InputSimulator.random_delay(
+                self.config.get("engaged_delay_min", 1.0), self.config.get("engaged_delay_max", 2.0)
+            )):
+                return False
+            if self.is_battle_list_empty():
+                return True
+        return False
+
     def loop(self) -> None:
         while not self.stopped:
             if not self.wait_for_higher_priority():
@@ -191,43 +228,15 @@ class TargetWorker(BaseWorker):
                     return
                 continue
 
-            if not self.is_attacking():
-                if not self.request_floor(timeout=5.0):
-                    if not self.sleep(1.0):
-                        return
-                    continue
-                try:
-                    self.press_attack_key()
-                finally:
-                    self.release_floor()
+            if not self.request_floor(timeout=5.0):
+                if not self.sleep(1.0):
+                    return
+                continue
 
-                if not self.sleep(self.attack_check_delay):
-                    return
-                attacking = self.is_attacking()
-                self.bump_counter()
-                self.log(
-                    f"Ataque #{self.counter}: tecla '{self.attack_key}' pressionada - "
-                    f"atacando={'sim' if attacking else 'não confirmado'}."
-                )
-                if attacking:
-                    self._unconfirmed_attacks = 0
-                else:
-                    self._unconfirmed_attacks += 1
-                    if self._unconfirmed_attacks >= self.max_unconfirmed_attacks:
-                        raise RuntimeError(
-                            f"{self.max_unconfirmed_attacks} ataques seguidos sem confirmação - "
-                            "provavelmente a região da Battle List/cor de ataque não bate mais "
-                            "com a posição atual do jogo. Reconfigure antes de continuar."
-                        )
+            try:
+                engaged_ok = self._engage()
+            finally:
+                self.release_floor()
 
-            while not self.stopped:
-                if not self.wait_for_higher_priority():
-                    return
-                if not self.sleep(InputSimulator.random_delay(
-                    self.config.get("engaged_delay_min", 1.0), self.config.get("engaged_delay_max", 2.0)
-                )):
-                    return
-                if self.is_battle_list_empty():
-                    break
-                if not self.is_attacking():
-                    break
+            if not engaged_ok:
+                return

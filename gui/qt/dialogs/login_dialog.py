@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout
 
 from core.license import LicenseManager
@@ -11,11 +11,31 @@ _ERROR_COLOR = "#ff5c5c"
 _SUCCESS_COLOR = "#3ddc84"
 
 
+class _AuthWorker(QThread):
+    finished_result = Signal(bool)
+
+    def __init__(self, license_manager: LicenseManager, mode: str, email: str, password: str, parent=None):
+        super().__init__(parent)
+        self.license_manager = license_manager
+        self.mode = mode
+        self.email = email
+        self.password = password
+
+    def run(self) -> None:
+        if self.mode == "login":
+            ok = self.license_manager.login(self.email, self.password)
+        else:
+            ok = self.license_manager.signup(self.email, self.password)
+        self.finished_result.emit(ok)
+
+
 class LoginDialog(QDialog):
     def __init__(self, license_manager: LicenseManager, on_save, parent=None):
         super().__init__(parent)
         self.license_manager = license_manager
         self.on_save = on_save
+        self._worker: _AuthWorker | None = None
+        self._token_before = ""
 
         self.setWindowTitle("Login - EasyF")
         self.setModal(True)
@@ -75,7 +95,13 @@ class LoginDialog(QDialog):
             return None
         return email, password
 
+    def _busy(self, busy: bool) -> None:
+        self.login_button.setEnabled(not busy)
+        self.signup_button.setEnabled(not busy)
+        self.cancel_button.setEnabled(not busy)
+
     def _start_cooldown(self) -> None:
+        self._busy(False)
         self.login_button.setEnabled(False)
         self.signup_button.setEnabled(False)
         QTimer.singleShot(RATE_LIMIT_MS, self._end_cooldown)
@@ -90,10 +116,13 @@ class LoginDialog(QDialog):
         creds = self._credentials()
         if creds is None:
             return
-        self.login_button.setEnabled(False)
-        self.signup_button.setEnabled(False)
+        self._busy(True)
         self._set_message("Entrando...")
-        ok = self.license_manager.login(*creds)
+        self._worker = _AuthWorker(self.license_manager, "login", *creds)
+        self._worker.finished_result.connect(self._on_login_finished)
+        self._worker.start()
+
+    def _on_login_finished(self, ok: bool) -> None:
         self.on_save()
         if ok:
             self.accept()
@@ -111,13 +140,16 @@ class LoginDialog(QDialog):
         creds = self._credentials()
         if creds is None:
             return
-        self.login_button.setEnabled(False)
-        self.signup_button.setEnabled(False)
+        self._busy(True)
         self._set_message("Cadastrando...")
-        token_before = self.license_manager.section.get("refresh_token")
-        self.license_manager.signup(*creds)
+        self._token_before = self.license_manager.section.get("refresh_token")
+        self._worker = _AuthWorker(self.license_manager, "signup", *creds)
+        self._worker.finished_result.connect(self._on_signup_finished)
+        self._worker.start()
+
+    def _on_signup_finished(self, _ok: bool) -> None:
         self.on_save()
-        if self._session_renewed(token_before):
+        if self._session_renewed(self._token_before):
             self._set_message("Cadastro realizado com sucesso!", success=True)
         else:
             self._set_message(self.license_manager.message or "Não foi possível cadastrar.")

@@ -44,12 +44,14 @@ class AutoFoodWorker(BaseWorker):
         self.min_region_width = max(icon.shape[1] for icon in self.icons.values())
         self.min_region_height = max(icon.shape[0] for icon in self.icons.values())
         self.capture = ScreenCapture()
+        self.register_with_coordinator("auto_food")
         self.log("AutoFood iniciado (clique em segundo plano, sem fallback pro mouse real).")
 
     def teardown(self) -> None:
         capture = getattr(self, "capture", None)
         if capture is not None:
             capture.close()
+        self.unregister_from_coordinator()
         self.log(f"AutoFood finalizado. Comidas usadas na sessão: {self.counter}.")
 
     def _click(self, x: int, y: int) -> None:
@@ -81,7 +83,7 @@ class AutoFoodWorker(BaseWorker):
     def loop(self) -> None:
         region_indisponivel_avisado = False
         while not self.stopped:
-            if not self.wait_while_paused():
+            if not self.wait_for_higher_priority():
                 return
 
             region = self._client_region()
@@ -105,7 +107,16 @@ class AutoFoodWorker(BaseWorker):
                 match = self._locate_icon(frame, icon)
                 if match:
                     rel_x, rel_y = match
-                    self._click(region[0] + rel_x, region[1] + rel_y)
+                    abs_x, abs_y = region[0] + rel_x, region[1] + rel_y
+                    if not self.wait_for_higher_priority():
+                        return
+                    if not self.request_floor(timeout=5.0):
+                        self.log(f"{nome} encontrado, mas outra rotina está com prioridade - tentando de novo em seguida.")
+                        break
+                    try:
+                        self._click(abs_x, abs_y)
+                    finally:
+                        self.release_floor()
                     self.bump_counter()
                     self.log(f"Comeu {nome} (#{self.counter}). Próxima em {self.eat_cooldown:.0f}s.")
                     clicked = True

@@ -8,5 +8,6 @@ class InfoIcon(QLabel):
     def __init__(self, text: str, parent=None):
         super().__init__("ⓘ", parent)
         self.setObjectName("InfoIcon")
-        self.setToolTip(text)
+        html = text.replace("\n\n", "\n").replace("\n", "<br><br>")
+        self.setToolTip(f"<span>{html}</span>")
         self.setCursor(Qt.PointingHandCursor)

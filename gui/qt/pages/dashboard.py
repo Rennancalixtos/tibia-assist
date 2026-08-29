@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QCheckBox, QGridLayout, QHBoxLayout, QLabel, QScro
 from gui.qt.components.log_panel import LogPanel
 from gui.qt.components.warning_banner import WarningBanner
 from gui.qt.controller import DISCLAIMER, Controller
+from gui.qt.dialogs.module_config.cavebot import CavebotModuleView
 from gui.qt.dialogs.module_config.fishing import FishingModuleView
 from gui.qt.dialogs.module_config.runemaker import RuneMakerModuleView
 from gui.qt.dialogs.module_config.target import TargetModuleView
@@ -37,10 +38,12 @@ class DashboardPage(QWidget):
         self.runemaker_view = RuneMakerModuleView(controller, main_window)
         self.target_view = TargetModuleView(controller, main_window)
         self.training_view = TrainingModuleView(controller, main_window)
+        self.cavebot_view = CavebotModuleView(controller, main_window)
         grid.addWidget(self.fishing_view.card, 0, 0)
         grid.addWidget(self.runemaker_view.card, 0, 1)
         grid.addWidget(self.target_view.card, 1, 0)
         grid.addWidget(self.training_view.card, 1, 1)
+        grid.addWidget(self.cavebot_view.card, 2, 0, 1, 2)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
         layout.addLayout(grid)

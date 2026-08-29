@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 from core import profiles as profile_store
 from gui.qt.components.action_button import ActionButton
 from gui.qt.components.hotkey_button import HotkeyButton
+from gui.qt.components.warning_banner import WarningBanner
 from gui.qt.controller import APP_NAME, Controller
 
 
@@ -90,6 +91,15 @@ class SettingsPage(QWidget):
         )
         self.background_enabled_check.setChecked(self.controller.background_enabled)
         layout.addWidget(self.background_enabled_check)
+
+        background_warning = WarningBanner(
+            "Aviso: alguns clients de Tibia (ex: Miracle) processam cliques pela posição real do "
+            "cursor do mouse, não pelas coordenadas enviadas em segundo plano. Nesses clients, mexer "
+            "o mouse dentro do jogo enquanto uma rotina está clicando (AutoFood, AutoFishing, Cavebot, "
+            "RuneMaker) pode fazer o clique cair no lugar errado - inclusive arrastar ou usar um item "
+            "sem querer. Evite usar o mouse dentro do jogo enquanto os módulos estiverem rodando."
+        )
+        layout.addWidget(background_warning)
 
         window_row = QHBoxLayout()
         window_row.addWidget(QLabel("Janela:"))

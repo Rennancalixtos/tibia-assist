@@ -320,12 +320,22 @@ class AutoFishingWorker(BaseWorker):
                 cx += random.randint(-half, half)
                 cy += random.randint(-half, half)
 
-            self.mouse.click(rod_x, rod_y, button="right", jitter=jitter)
-            if not self.sleep(InputSimulator.random_delay(0.10, 0.25)):
+            if not self.wait_for_higher_priority():
                 return
+            if not self.request_floor(timeout=5.0):
+                if not self.sleep(0.5):
+                    return
+                continue
 
-            abs_x, abs_y = rx + cx, ry + cy
-            clicked_x, clicked_y = self.mouse.click(abs_x, abs_y, button=button, jitter=jitter)
+            try:
+                self.mouse.click(rod_x, rod_y, button="right", jitter=jitter)
+                if not self.sleep(InputSimulator.random_delay(0.10, 0.25)):
+                    return
+
+                abs_x, abs_y = rx + cx, ry + cy
+                clicked_x, clicked_y = self.mouse.click(abs_x, abs_y, button=button, jitter=jitter)
+            finally:
+                self.release_floor()
 
             self.bump_counter()
             self.log(

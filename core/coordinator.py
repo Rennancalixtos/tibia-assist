@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 
-PRIORITY_ORDER = ["target", "training", "runemaker", "fishing"]
+PRIORITY_ORDER = ["target", "training", "runemaker", "fishing", "auto_food", "cavebot"]
 
 
 def _priority_rank(name: str) -> int:
@@ -63,10 +63,11 @@ class AutomationCoordinator:
         with self._lock:
             for p in lower_active:
                 self._confirm_events.pop(p, None)
+            if not ok and self._current_requester == name:
+                self._current_requester = None
         return ok
 
     def release_floor(self, name: str) -> None:
         with self._lock:
             if self._current_requester == name:
                 self._current_requester = None
-            self._confirm_events.clear()
