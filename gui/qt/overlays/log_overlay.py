@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QPlainTextEdit, QVBoxLayout, QWidget
 
 from core import background_input
 
-_WIDTH = 280
+_MIN_WIDTH = 480
 _HEIGHT = 170
 _MARGIN_X = 10
 _MARGIN_Y = 48
@@ -18,8 +18,8 @@ class LogOverlay(QWidget):
         super().__init__(parent, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self._hwnd_resolver = hwnd_resolver
         self.setAttribute(Qt.WA_ShowWithoutActivating, True)
-        self.setWindowOpacity(0.55)
-        self.setStyleSheet("background-color: black;")
+        self.setWindowOpacity(0.85)
+        self.setStyleSheet("background-color: #0e1015;")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
@@ -27,7 +27,7 @@ class LogOverlay(QWidget):
         self.text = QPlainTextEdit(self)
         self.text.setReadOnly(True)
         self.text.setStyleSheet(
-            "background-color: black; color: #39ff14; border: none; "
+            "background-color: #0e1015; color: #39ff14; border: none; "
             "font-family: Consolas, monospace; font-size: 9pt;"
         )
         self.text.setLineWrapMode(QPlainTextEdit.WidgetWidth)
@@ -38,15 +38,17 @@ class LogOverlay(QWidget):
     def _layout_position(self) -> None:
         rect = self._client_rect()
         if rect is not None:
-            left, top, _width, height = rect
+            left, top, width, height = rect
             x = left + _MARGIN_X
             y = top + height - _HEIGHT - _MARGIN_Y
+            box_width = min(700, max(_MIN_WIDTH, width - 2 * _MARGIN_X))
         else:
             screen = QGuiApplication.primaryScreen()
             geo = screen.geometry() if screen is not None else QRect(0, 0, 1920, 1080)
             x = _MARGIN_X
             y = geo.height() - _HEIGHT - _MARGIN_Y
-        self.setGeometry(max(0, x), max(0, y), _WIDTH, _HEIGHT)
+            box_width = _MIN_WIDTH
+        self.setGeometry(max(0, x), max(0, y), box_width, _HEIGHT)
 
     def _client_rect(self) -> tuple[int, int, int, int] | None:
         if self._hwnd_resolver is None:
