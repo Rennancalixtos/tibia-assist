@@ -129,7 +129,14 @@ class CavebotWorker(BaseWorker):
         if not point_in_region(abs_x, abs_y, self.minimap_region) or not point_in_region(abs_x, abs_y, client_rect):
             return "out_of_bounds"
 
-        self.mouse.click(abs_x, abs_y, button="left", jitter=self.click_jitter)
+        if not self.wait_for_higher_priority():
+            return "stopped"
+        if not self.request_floor(timeout=5.0):
+            return "floor_denied"
+        try:
+            self.mouse.click(abs_x, abs_y, button="left", jitter=self.click_jitter)
+        finally:
+            self.release_floor()
         return "clicked"
 
     def loop(self) -> None:
@@ -171,11 +178,12 @@ class CavebotWorker(BaseWorker):
                 return
             if outcome != "clicked":
                 search_failures += 1
-                motivo = (
-                    f"ícone não encontrado no mini mapa em {self.search_timeout:.0f}s"
-                    if outcome == "not_found"
-                    else "coordenada calculada fora da região do mini mapa ou da janela do jogo"
-                )
+                if outcome == "not_found":
+                    motivo = f"ícone não encontrado no mini mapa em {self.search_timeout:.0f}s"
+                elif outcome == "floor_denied":
+                    motivo = "outra rotina de prioridade maior está agindo"
+                else:
+                    motivo = "coordenada calculada fora da região do mini mapa ou da janela do jogo"
                 self.log(f"Ponto {ponto_label}: {motivo} (falha {search_failures}/{self.max_search_failures}).")
                 if search_failures >= self.max_search_failures:
                     self.log(
