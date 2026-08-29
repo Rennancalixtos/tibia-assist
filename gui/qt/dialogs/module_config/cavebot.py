@@ -82,9 +82,20 @@ class _AddWaypointDialog(QDialog):
         form.addRow("Espera após o clique (s)", self.input_wait)
 
         initial_confidence = initial.get("confidence") if initial else None
+        confidence_row = QHBoxLayout()
         self.input_confidence = QLineEdit(str(initial_confidence or default_confidence))
         self.input_confidence.setFixedWidth(80)
-        form.addRow("Confiança mínima deste ponto (0 a 1)", self.input_confidence)
+        confidence_row.addWidget(self.input_confidence)
+        confidence_row.addWidget(
+            InfoIcon(
+                "Menor = acha mais fácil, mais risco de confundir. Maior = mais seguro, mas pode não "
+                "achar o marcador.\n\n"
+                "Comece em 0.60-0.65 e só suba se esse ponto especificamente estiver "
+                "clicando errado; se ele nunca for encontrado, tente baixar em vez de subir."
+            )
+        )
+        confidence_row.addStretch(1)
+        form.addRow("Confiança mínima deste ponto (0 a 1)", confidence_row)
 
         layout.addLayout(form)
 
@@ -162,6 +173,25 @@ class CavebotModuleView:
         box_route = QGroupBox("2. Rota")
         box_route_layout = QVBoxLayout(box_route)
 
+        route_hint_row = QHBoxLayout()
+        route_hint_row.addWidget(
+            InfoIcon(
+                "Cada ponto é um marcador colocado de verdade no mini mapa do jogo (botão direito no "
+                "mini mapa > Adicionar marcador), não um ícone genérico. Os arquivos 1.png a 15.png já "
+                "vêm recortados na escala real do marcador no jogo - os ícones 16 a 20 ficam de fora de "
+                "propósito (setas de direção e duplicatas, fáceis de confundir entre si).\n\n"
+                "Se precisar de um marcador que ainda não existe, ou um que não está sendo reconhecido "
+                "direito, capture-o ao vivo direto do mini mapa (com o marcador de verdade visível na "
+                "tela) - nunca a partir da tela de seleção de marcador do jogo, que mostra o ícone numa "
+                "escala bem maior que a real e não vai bater com o que aparece no mini mapa."
+            )
+        )
+        route_hint_label = QLabel("Como funciona a rota")
+        route_hint_label.setObjectName("HintLabel")
+        route_hint_row.addWidget(route_hint_label)
+        route_hint_row.addStretch(1)
+        box_route_layout.addLayout(route_hint_row)
+
         self.list_waypoints = QListWidget()
         self._refresh_waypoint_list()
         box_route_layout.addWidget(self.list_waypoints)
@@ -190,9 +220,22 @@ class CavebotModuleView:
         box_detect = QGroupBox("3. Detecção e clique")
         detect_form = QFormLayout(box_detect)
 
+        confidence_row = QHBoxLayout()
         self.input_confidence = QLineEdit(str(self.cfg.get("confidence", 0.85)))
         self.input_confidence.setFixedWidth(60)
-        detect_form.addRow("Confiança padrão (0 a 1) - usada só nos pontos sem valor próprio", self.input_confidence)
+        confidence_row.addWidget(self.input_confidence)
+        confidence_row.addWidget(
+            InfoIcon(
+                "Quanto menor, mais tolerante o reconhecimento do ícone (acha mais fácil, mas com mais "
+                "risco de confundir com outra coisa). Quanto maior, mais rigoroso (mais seguro, mas pode "
+                "não achar se o marcador não bater pixel a pixel com a imagem capturada).\n\n"
+                "Para os ícones pequenos do mini mapa, 0.60-0.65 costuma funcionar bem - ajuste por ponto "
+                "individual (botão Editar) se um marcador específico não estiver sendo achado ou estiver "
+                "clicando no lugar errado."
+            )
+        )
+        confidence_row.addStretch(1)
+        detect_form.addRow("Confiança padrão (0 a 1) - usada só nos pontos sem valor próprio", confidence_row)
 
         self.input_check_interval = QLineEdit(str(self.cfg.get("check_interval", 0.3)))
         self.input_check_interval.setFixedWidth(60)
@@ -204,7 +247,7 @@ class CavebotModuleView:
 
         self.input_max_failures = QLineEdit(str(self.cfg.get("max_search_failures", 3)))
         self.input_max_failures.setFixedWidth(60)
-        detect_form.addRow("Falhas seguidas antes de parar com erro", self.input_max_failures)
+        detect_form.addRow("Falhas seguidas antes de pular pro próximo ponto", self.input_max_failures)
 
         self.input_click_jitter = QLineEdit(str(self.cfg.get("click_jitter", 2)))
         self.input_click_jitter.setFixedWidth(60)
