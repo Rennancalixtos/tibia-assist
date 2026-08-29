@@ -147,6 +147,15 @@ DEFAULTS: dict[str, Any] = {
         "anti_afk_key_a": "up",
         "anti_afk_key_b": "down",
     },
+    "cavebot": {
+        "waypoints": [],
+        "minimap_region": None,
+        "confidence": 0.65,
+        "check_interval": 0.3,
+        "search_timeout": 5.0,
+        "max_search_failures": 3,
+        "click_jitter": 2,
+    },
 }
 
 
