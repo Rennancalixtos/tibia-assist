@@ -44,6 +44,7 @@ class MainWindow(QMainWindow):
         root_layout.addWidget(content, 1)
 
         self.log_overlay = LogOverlay(hwnd_resolver=controller.resolve_game_window_hwnd)
+        self.log_overlay.configure_chat_region(controller.config_store.section("log").get("chat_region"))
 
         self.stack = QStackedWidget()
         content_layout.addWidget(self.stack, 1)

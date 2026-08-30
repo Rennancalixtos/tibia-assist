@@ -96,8 +96,8 @@ class SettingsPage(QWidget):
             "Aviso: alguns clients de Tibia (ex: Miracle) processam cliques pela posição real do "
             "cursor do mouse, não pelas coordenadas enviadas em segundo plano. Nesses clients, mexer "
             "o mouse dentro do jogo enquanto uma rotina está clicando (AutoFood, AutoFishing, Cavebot, "
-            "RuneMaker) pode fazer o clique cair no lugar errado - inclusive arrastar ou usar um item "
-            "sem querer. Evite usar o mouse dentro do jogo enquanto os módulos estiverem rodando."
+            "RuneMaker, AutoLoot) pode fazer o clique cair no lugar errado - inclusive arrastar ou usar "
+            "um item sem querer. Evite usar o mouse dentro do jogo enquanto os módulos estiverem rodando."
         )
         layout.addWidget(background_warning)
 

@@ -34,6 +34,8 @@ TAB_LABELS = {
     "training": "Training",
     "auto_food": "AutoFood",
     "cavebot": "Cavebot",
+    "auto_loot": "AutoLoot",
+    "app": "Sistema",
 }
 
 HEARTBEAT_INTERVAL_MS = 45_000

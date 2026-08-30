@@ -82,6 +82,7 @@ DEFAULTS: dict[str, Any] = {
     "log": {
         "overlay_enabled": True,
         "panel_enabled": False,
+        "chat_region": None,
     },
     "runemaker": {
         "spell_hotkey": "f2",
@@ -155,6 +156,20 @@ DEFAULTS: dict[str, Any] = {
         "search_timeout": 5.0,
         "max_search_failures": 3,
         "click_jitter": 2,
+    },
+    "auto_loot": {
+        "character_point": None,
+        "tile_size_px": 32,
+        "corpse_region": None,
+        "destination_point": None,
+        "open_corpse_delay_s": 0.6,
+        "check_interval": 0.3,
+        "loot_scan_timeout_s": 3.0,
+        "max_loot_passes": 10,
+        "corpse_recheck_cooldown_s": 3.0,
+        "click_jitter": 2,
+        "stuck_item_max_retries": 3,
+        "loot_items": [],
     },
 }
 

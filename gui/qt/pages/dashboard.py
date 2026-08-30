@@ -2,14 +2,18 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QCheckBox, QGridLayout, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
+from gui.qt.components.action_button import ActionButton
+from gui.qt.components.info_tooltip import InfoIcon
 from gui.qt.components.log_panel import LogPanel
 from gui.qt.components.warning_banner import WarningBanner
 from gui.qt.controller import DISCLAIMER, Controller
+from gui.qt.dialogs.module_config.auto_loot import AutoLootModuleView
 from gui.qt.dialogs.module_config.cavebot import CavebotModuleView
 from gui.qt.dialogs.module_config.fishing import FishingModuleView
 from gui.qt.dialogs.module_config.runemaker import RuneMakerModuleView
 from gui.qt.dialogs.module_config.target import TargetModuleView
 from gui.qt.dialogs.module_config.training import TrainingModuleView
+from gui.widgets import region_text
 
 
 class DashboardPage(QWidget):
@@ -39,11 +43,13 @@ class DashboardPage(QWidget):
         self.target_view = TargetModuleView(controller, main_window)
         self.training_view = TrainingModuleView(controller, main_window)
         self.cavebot_view = CavebotModuleView(controller, main_window)
+        self.auto_loot_view = AutoLootModuleView(controller, main_window)
         grid.addWidget(self.fishing_view.card, 0, 0)
         grid.addWidget(self.runemaker_view.card, 0, 1)
         grid.addWidget(self.target_view.card, 1, 0)
         grid.addWidget(self.training_view.card, 1, 1)
         grid.addWidget(self.cavebot_view.card, 2, 0, 1, 2)
+        grid.addWidget(self.auto_loot_view.card, 3, 0, 1, 2)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
         layout.addLayout(grid)
@@ -71,10 +77,26 @@ class DashboardPage(QWidget):
         controller.auto_food_state_changed.connect(self._on_auto_food_state)
         controller.auto_food_counter_changed.connect(self.auto_food_status_label.setText)
 
+        log_overlay_row = QHBoxLayout()
         self.log_overlay_check = QCheckBox("Logs na tela do jogo")
         self.log_overlay_check.setChecked(controller.log_overlay_enabled)
         self.log_overlay_check.toggled.connect(self._on_log_overlay_toggled)
-        options_box.addWidget(self.log_overlay_check)
+        log_overlay_row.addWidget(self.log_overlay_check)
+        button_chat_region = ActionButton("Calibrar área do chat...", variant="secondary")
+        button_chat_region.clicked.connect(self.pick_chat_region)
+        log_overlay_row.addWidget(button_chat_region)
+        self.chat_region_label = QLabel(region_text(controller.config_store.section("log").get("chat_region")))
+        log_overlay_row.addWidget(self.chat_region_label)
+        log_overlay_row.addWidget(
+            InfoIcon(
+                "Arraste cobrindo toda a área do chat do Tibia (o painel de mensagens embaixo da tela do "
+                "jogo) - ESC cancela.\n\n"
+                "O balão de log é posicionado na metade direita dessa área, encostado no canto inferior "
+                "direito, já que as mensagens do chat raramente ocupam a largura toda."
+            )
+        )
+        log_overlay_row.addStretch(1)
+        options_box.addLayout(log_overlay_row)
 
         self.log_panel_check = QCheckBox("Mostrar logs na aplicação")
         self.log_panel_check.setChecked(controller.log_panel_enabled)
@@ -120,6 +142,16 @@ class DashboardPage(QWidget):
             self.auto_food_check.blockSignals(True)
             self.auto_food_check.setChecked(False)
             self.auto_food_check.blockSignals(False)
+
+    def pick_chat_region(self) -> None:
+        region = self.controller.select_region("Arraste cobrindo toda a área do chat do Tibia  -  ESC cancela")
+        if not region:
+            return
+        self.controller.config_store.section("log")["chat_region"] = region
+        self.chat_region_label.setText(region_text(region))
+        self.log_overlay.configure_chat_region(region)
+        self.controller.config_store.save()
+        self.controller.log(f"Área do chat definida: {region_text(region)}")
 
     def _on_log_overlay_toggled(self, checked: bool) -> None:
         self.controller.toggle_log_overlay(checked)

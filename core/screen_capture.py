@@ -61,6 +61,21 @@ def load_image(path: str) -> np.ndarray | None:
     return cv2.imread(path, cv2.IMREAD_COLOR)
 
 
+def load_image_with_mask(path: str) -> tuple[np.ndarray, np.ndarray | None] | None:
+    if cv2 is None:
+        raise RuntimeError("opencv-python não está instalado")
+    raw = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+    if raw is None:
+        return None
+    if raw.ndim == 3 and raw.shape[2] == 4:
+        bgr = raw[:, :, :3]
+        mask = (raw[:, :, 3] > 0).astype(np.uint8) * 255
+        return bgr, mask
+    if raw.ndim == 2:
+        return cv2.cvtColor(raw, cv2.COLOR_GRAY2BGR), None
+    return raw[:, :, :3], None
+
+
 def is_valid_region(region: Region | None) -> bool:
     return (
         isinstance(region, (list, tuple))

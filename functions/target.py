@@ -63,19 +63,29 @@ def battle_list_is_empty(frame: np.ndarray, template: np.ndarray | None, thresho
     return score >= threshold
 
 
+def color_mask(
+    frame: np.ndarray,
+    rgb: tuple[int, int, int] = (254, 0, 0),
+    tolerance: int = 6,
+) -> np.ndarray | None:
+    if frame is None or frame.size == 0:
+        return None
+    r, g, b = rgb
+    target_bgr = np.array([b, g, r], dtype=np.int16)
+    lower = np.clip(target_bgr - tolerance, 0, 255).astype(np.uint8)
+    upper = np.clip(target_bgr + tolerance, 0, 255).astype(np.uint8)
+    return cv2.inRange(frame, lower, upper)
+
+
 def attack_color_present(
     frame: np.ndarray,
     rgb: tuple[int, int, int] = (254, 0, 0),
     tolerance: int = 6,
     min_pixels: int = 3,
 ) -> bool:
-    if frame is None or frame.size == 0:
+    mask = color_mask(frame, rgb, tolerance)
+    if mask is None:
         return False
-    r, g, b = rgb
-    target_bgr = np.array([b, g, r], dtype=np.int16)
-    lower = np.clip(target_bgr - tolerance, 0, 255).astype(np.uint8)
-    upper = np.clip(target_bgr + tolerance, 0, 255).astype(np.uint8)
-    mask = cv2.inRange(frame, lower, upper)
     return int(np.count_nonzero(mask)) >= min_pixels
 
 
@@ -202,19 +212,25 @@ class TargetWorker(BaseWorker):
         return True
 
     def _engage(self) -> bool:
-        while not self.stopped:
-            if not self.is_attacking():
-                if not self._attack_once():
+        if self.coordinator:
+            self.coordinator.set_engaged("target", True)
+        try:
+            while not self.stopped:
+                if not self.wait_for_higher_priority():
                     return False
-            if not self.wait_for_higher_priority():
-                return False
-            if not self.sleep(InputSimulator.random_delay(
-                self.config.get("engaged_delay_min", 1.0), self.config.get("engaged_delay_max", 2.0)
-            )):
-                return False
-            if self.is_battle_list_empty():
-                return True
-        return False
+                if not self.is_attacking():
+                    if not self._attack_once():
+                        return False
+                if not self.sleep(InputSimulator.random_delay(
+                    self.config.get("engaged_delay_min", 1.0), self.config.get("engaged_delay_max", 2.0)
+                )):
+                    return False
+                if self.is_battle_list_empty():
+                    return True
+            return False
+        finally:
+            if self.coordinator:
+                self.coordinator.set_engaged("target", False)
 
     def loop(self) -> None:
         while not self.stopped:

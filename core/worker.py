@@ -97,7 +97,9 @@ class BaseWorker(threading.Thread):
         ):
             if self.coordinator and name and self.coordinator.should_pause(name):
                 if not externally_paused_logged:
-                    self.log("Pausado (outra rotina está agindo)...")
+                    blocker = self.coordinator.current_blocker(name)
+                    label = (blocker or "outra rotina").replace("_", " ")
+                    self.log(f"Pausado ({label} está agindo)...")
                     externally_paused_logged = True
                 self.coordinator.confirm_paused(name)
             if not self.sleep(0.1):
@@ -109,7 +111,9 @@ class BaseWorker(threading.Thread):
     def request_floor(self, timeout: float = 5.0) -> bool:
         if not self.coordinator or not self._coordinator_name:
             return True
-        return self.coordinator.request_floor(self._coordinator_name, timeout=timeout)
+        return self.coordinator.request_floor(
+            self._coordinator_name, timeout=timeout, cancel_check=lambda: self.stopped
+        )
 
     def release_floor(self) -> None:
         if self.coordinator and self._coordinator_name:
