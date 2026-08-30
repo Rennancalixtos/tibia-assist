@@ -10,7 +10,17 @@ from core.config import RESOURCE_DIR
 from core.input_simulator import InputSimulator
 from core.screen_capture import ScreenCapture, is_valid_region, load_image_with_mask
 from core.worker import BaseWorker
-from functions.target import color_mask
+
+SURROUNDING_TILE_OFFSETS = [
+    (0, -1),
+    (1, -1),
+    (1, 0),
+    (1, 1),
+    (0, 1),
+    (-1, 1),
+    (-1, 0),
+    (-1, -1),
+]
 
 
 def resolve_icon_path(path: str | None) -> str:
@@ -26,80 +36,16 @@ def point_in_region(x: int, y: int, region) -> bool:
     return rx <= x < rx + rw and ry <= y < ry + rh
 
 
-def sample_dominant_color(frame: np.ndarray) -> tuple[int, int, int]:
-    mean_bgr = frame.reshape(-1, 3).mean(axis=0)
-    b, g, r = mean_bgr
-    return int(round(r)), int(round(g)), int(round(b))
-
-
-def _find_marker_square(mask: np.ndarray) -> tuple[int, int] | None:
-    contours, hierarchy = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours or hierarchy is None:
-        return None
-    hierarchy = hierarchy[0]
-    best = None
-    best_area = 0
-    for i, contour in enumerate(contours):
-        has_hole = hierarchy[i][2] != -1
-        if not has_hole:
-            continue
-        x, y, w, h = cv2.boundingRect(contour)
-        if w < 6 or h < 6:
-            continue
-        aspect = w / h
-        if not (0.65 <= aspect <= 1.55):
-            continue
-
-        box_area = w * h
-        contour_area = cv2.contourArea(contour)
-        extent = contour_area / box_area if box_area > 0 else 0
-        if extent < 0.75:
-            continue
-
-        perimeter = cv2.arcLength(contour, True)
-        approx = cv2.approxPolyDP(contour, 0.04 * perimeter, True)
-        if len(approx) > 6:
-            continue
-
-        if box_area > best_area:
-            best_area = box_area
-            best = (x + w // 2, y + h // 2)
-    return best
-
-
-def attack_color_centroid(
-    frame: np.ndarray,
-    rgb: tuple[int, int, int] = (254, 0, 0),
-    tolerance: int = 6,
-    min_pixels: int = 3,
-) -> tuple[int, int] | None:
-    mask = color_mask(frame, rgb, tolerance)
-    if mask is None:
-        return None
-
-    marker = _find_marker_square(mask)
-    if marker is not None:
-        return marker
-
-    if int(np.count_nonzero(mask)) < min_pixels:
-        return None
-    points = cv2.findNonZero(mask)
-    if points is None:
-        return None
-    x, y = np.mean(points.reshape(-1, 2), axis=0)
-    return int(round(x)), int(round(y))
-
-
 class AutoLootWorker(BaseWorker):
     name_label = "auto_loot"
 
     def setup(self) -> None:
         self.hwnd = self.config.get("_background_hwnd")
 
-        self.death_watch_region = self.config.get("death_watch_region")
-        if not is_valid_region(self.death_watch_region):
+        self.character_point = self.config.get("character_point")
+        if not self.character_point or len(self.character_point) != 2:
             raise ValueError(
-                "Área de monitoramento da morte não calibrada. Capture essa região antes de iniciar."
+                "Posição do personagem não calibrada. Selecione esse ponto antes de iniciar."
             )
 
         self.corpse_region = self.config.get("corpse_region")
@@ -125,19 +71,13 @@ class AutoLootWorker(BaseWorker):
         if not self.loot_items:
             raise ValueError("Nenhum item de loot configurado. Adicione ao menos um item antes de iniciar.")
 
-        rgb = self.config.get("attack_color_rgb") or [254, 0, 0]
-        self.attack_rgb = (int(rgb[0]), int(rgb[1]), int(rgb[2]))
-        self.attack_tolerance = int(self.config.get("attack_color_tolerance", 6))
-        self.attack_min_pixels = int(self.config.get("attack_color_min_pixels", 3))
-
+        self.tile_size_px = max(1, int(self.config.get("tile_size_px", 32)))
         self.open_corpse_delay_s = float(self.config.get("open_corpse_delay_s", 0.6))
         self.check_interval = float(self.config.get("check_interval", 0.3))
-        self.death_confirm_delay_s = float(self.config.get("death_confirm_delay_s", 0.6))
         self.loot_scan_timeout_s = float(self.config.get("loot_scan_timeout_s", 3.0))
         self.max_loot_passes = int(self.config.get("max_loot_passes", 10))
         self.corpse_recheck_cooldown_s = float(self.config.get("corpse_recheck_cooldown_s", 3.0))
         self.click_jitter = int(self.config.get("click_jitter", 2))
-        self.open_corpse_corner_offset = int(self.config.get("open_corpse_corner_offset", 0))
         self.stuck_item_max_retries = max(1, int(self.config.get("stuck_item_max_retries", 3)))
 
         self._cap_warning_shown = False
@@ -277,32 +217,6 @@ class AutoLootWorker(BaseWorker):
         self.log(f"Limite de {self.max_loot_passes} passada(s) de loot atingido - encerrando por segurança.")
         return collected
 
-    def _open_corpse_and_collect(self, xy: tuple[int, int]) -> None:
-        if not self.request_floor(timeout=5.0):
-            self.log("Sequência de loot cancelada: outra rotina de prioridade maior não liberou o chão.")
-            return
-        try:
-            if not self.wait_for_higher_priority():
-                return
-
-            recheck_frame = self.capture.grab(self.death_watch_region)
-            if attack_color_centroid(
-                recheck_frame, self.attack_rgb, self.attack_tolerance, self.attack_min_pixels
-            ) is not None:
-                self.log("Falso alarme - cor de ataque reapareceu antes do clique, corpo não será aberto.")
-                return
-
-            x, y = xy
-            x += self.open_corpse_corner_offset
-            y += self.open_corpse_corner_offset
-            self.mouse.click(x, y, button="right", jitter=self.click_jitter)
-            self.log(f"Corpo aberto em x={x} y={y}.")
-            if not self.sleep(self.open_corpse_delay_s):
-                return
-            self._collect_loot_passes()
-        finally:
-            self.release_floor()
-
     def _collect_loot(self) -> int:
         if not self.request_floor(timeout=5.0):
             self.log("Coleta de loot cancelada: outra rotina de prioridade maior não liberou o chão.")
@@ -312,9 +226,32 @@ class AutoLootWorker(BaseWorker):
         finally:
             self.release_floor()
 
+    def _sweep_surrounding_tiles(self) -> None:
+        if not self.request_floor(timeout=5.0):
+            self.log("Varredura de corpos cancelada: outra rotina de prioridade maior não liberou o chão.")
+            return
+        try:
+            cx, cy = int(self.character_point[0]), int(self.character_point[1])
+            for dx, dy in SURROUNDING_TILE_OFFSETS:
+                if not self.wait_for_higher_priority():
+                    return
+                x = cx + dx * self.tile_size_px
+                y = cy + dy * self.tile_size_px
+                self.mouse.click(x, y, button="right", jitter=self.click_jitter)
+                if not self.sleep(self.open_corpse_delay_s):
+                    return
+
+                frame = self.capture.grab(self.corpse_region)
+                if self._find_loot_item(frame) is None:
+                    continue
+
+                self.log(f"Corpo aberto em x={x} y={y} - loot encontrado.")
+                self._collect_loot_passes()
+        finally:
+            self.release_floor()
+
     def loop(self) -> None:
-        last_seen_xy: tuple[int, int] | None = None
-        absent_since: float | None = None
+        was_engaged = False
         corpse_idle_until: float | None = None
 
         while not self.stopped:
@@ -331,31 +268,14 @@ class AutoLootWorker(BaseWorker):
             target_engaged = (
                 self.coordinator.is_engaged("target")
                 if self.coordinator and self.coordinator.is_active("target")
-                else True
+                else False
             )
 
-            death_frame = self.capture.grab(self.death_watch_region)
-            centroid = attack_color_centroid(
-                death_frame, self.attack_rgb, self.attack_tolerance, self.attack_min_pixels
-            )
-
-            if centroid is not None:
-                if last_seen_xy is not None or target_engaged:
-                    last_seen_xy = (
-                        int(self.death_watch_region[0]) + centroid[0],
-                        int(self.death_watch_region[1]) + centroid[1],
-                    )
-                absent_since = None
-            elif last_seen_xy is not None:
-                now = time.monotonic()
-                if absent_since is None:
-                    absent_since = now
-                elif now - absent_since >= self.death_confirm_delay_s:
-                    self.log("Morte detectada - abrindo corpo e coletando o loot.")
-                    self._open_corpse_and_collect(last_seen_xy)
-                    last_seen_xy = None
-                    absent_since = None
-                    corpse_idle_until = None
+            if was_engaged and not target_engaged:
+                self.log("Combate encerrado - varrendo os SQMs ao redor em busca de corpo.")
+                self._sweep_surrounding_tiles()
+                corpse_idle_until = None
+            was_engaged = target_engaged
 
             now = time.monotonic()
             if corpse_idle_until is None or now >= corpse_idle_until:

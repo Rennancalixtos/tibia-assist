@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 
 from core.config import ASSETS_DIR
 from core.screen_capture import ScreenCapture, is_valid_region, save_image
-from functions.auto_loot import AutoLootWorker, resolve_icon_path, sample_dominant_color
+from functions.auto_loot import AutoLootWorker, SURROUNDING_TILE_OFFSETS, resolve_icon_path
 from gui.qt.components.action_button import ActionButton
 from gui.qt.components.info_tooltip import InfoIcon
 from gui.qt.components.module_card import ModuleCard
@@ -166,14 +166,15 @@ class AutoLootModuleView:
         self.card.pause_requested.connect(self.toggle_pause)
         self.card.stop_requested.connect(self.stop)
 
-        self.death_watch_overlay = ManaOverlay(main_window)
-        self.death_watch_overlay.configure_region(self.cfg.get("death_watch_region"))
         self.corpse_overlay = ManaOverlay(main_window)
         self.corpse_overlay.configure_region(self.cfg.get("corpse_region"))
 
+        self.tile_overlays = [ManaOverlay(main_window) for _ in SURROUNDING_TILE_OFFSETS]
+        self._update_tile_overlays()
+
         self.config_dialog = _ConfigDialog(main_window)
         self.config_dialog.setWindowTitle("Configurar - AutoLoot")
-        self.config_dialog.resize(560, 700)
+        self.config_dialog.resize(560, 640)
         self._build_config_dialog()
 
         controller.register_module_view("auto_loot", self)
@@ -193,78 +194,44 @@ class AutoLootModuleView:
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)
 
-        box_death = QGroupBox("1. Área de monitoramento da morte")
-        box_death_layout = QHBoxLayout(box_death)
-        button_death = ActionButton("Capturar área...", variant="secondary")
-        button_death.clicked.connect(self.pick_death_watch_region)
-        self.label_death_region = QLabel(region_text(self.cfg.get("death_watch_region")))
-        box_death_layout.addWidget(button_death)
-        box_death_layout.addWidget(self.label_death_region)
-        box_death_layout.addWidget(
+        box_char = QGroupBox("1. Posição do personagem")
+        box_char_layout = QVBoxLayout(box_char)
+
+        char_row = QHBoxLayout()
+        button_char = ActionButton("Selecionar personagem...", variant="secondary")
+        button_char.clicked.connect(self.pick_character_point)
+        self.label_char_point = QLabel(region_text(self.cfg.get("character_point")))
+        char_row.addWidget(button_char)
+        char_row.addWidget(self.label_char_point)
+        char_row.addWidget(
             InfoIcon(
-                "Área da tela do jogo onde o monstro engajado costuma aparecer. Necessária porque em "
-                "servidores old-school a cave é escura e o monstro pode não aparecer visualmente mesmo "
-                "com a Battle List mostrando o ataque.\n\n"
-                "Cubra uma área generosa ao redor do personagem - a mesma cor de ataque do Target é "
-                "monitorada aqui, só que na tela do jogo em vez da Battle List."
+                "Clique em cima do seu personagem na tela do jogo (parado, sem andar) - ESC cancela.\n\n"
+                "Quando o Target confirma que a Battle List ficou vazia (combate encerrado), o AutoLoot "
+                "clica com botão direito nos 8 SQMs ao redor dessa posição (o 'box'), abrindo qualquer "
+                "corpo que esteja ali e recolhendo os itens configurados - sem precisar identificar onde "
+                "o monstro morreu."
             )
         )
-        box_death_layout.addStretch(1)
-        layout.addWidget(box_death)
+        char_row.addStretch(1)
+        box_char_layout.addLayout(char_row)
 
-        box_color = QGroupBox("2. Cor de ataque")
-        box_color_layout = QVBoxLayout(box_color)
-
-        rgb = self.cfg.get("attack_color_rgb") or [254, 0, 0]
-        color_row = QHBoxLayout()
-        color_row.addWidget(QLabel("RGB:"))
-        self.input_color_r = QLineEdit(str(rgb[0]))
-        self.input_color_r.setFixedWidth(50)
-        self.input_color_g = QLineEdit(str(rgb[1]))
-        self.input_color_g.setFixedWidth(50)
-        self.input_color_b = QLineEdit(str(rgb[2]))
-        self.input_color_b.setFixedWidth(50)
-        color_row.addWidget(self.input_color_r)
-        color_row.addWidget(self.input_color_g)
-        color_row.addWidget(self.input_color_b)
-        button_copy_target = ActionButton("Copiar do Target", variant="secondary")
-        button_copy_target.clicked.connect(self.copy_color_from_target)
-        color_row.addWidget(button_copy_target)
-        color_row.addWidget(
+        tile_row = QHBoxLayout()
+        self.input_tile_size = QLineEdit(str(self.cfg.get("tile_size_px", 32)))
+        self.input_tile_size.setFixedWidth(60)
+        tile_row.addWidget(QLabel("Tamanho do SQM (px)"))
+        tile_row.addWidget(self.input_tile_size)
+        tile_row.addWidget(
             InfoIcon(
-                "Mesma cor de ataque já configurada no Target (nome da criatura em vermelho), só que "
-                "lida na tela do jogo em vez da Battle List.\n\n"
-                "Se o Target já estiver calibrado, use 'Copiar do Target' em vez de recalibrar do zero."
+                "Tamanho de 1 SQM em pixels na tela (32 = tile padrão do Tibia sem zoom). Se os cliques "
+                "caírem fora do SQM certo, ajuste esse valor conforme o zoom/resolução do seu client."
             )
         )
-        button_calibrate_screen = ActionButton("Calibrar cor na tela...", variant="secondary")
-        button_calibrate_screen.clicked.connect(self.calibrate_color_from_screen)
-        color_row.addWidget(button_calibrate_screen)
-        color_row.addWidget(
-            InfoIcon(
-                "Recorte um pedacinho bem em cima do marcador/quadrado de ataque na tela do jogo (com um "
-                "monstro selecionado) - ESC cancela.\n\n"
-                "Use isso em vez de 'Copiar do Target' se estiver abrindo corpo à toa em monstros de cor "
-                "forte (ex: vermelhos) - a cor da Battle List pode não ser exatamente igual à do marcador "
-                "na tela. Depois de calibrar aqui, considere baixar a tolerância (ex: 2 a 4) pra não "
-                "confundir com a roupa do monstro."
-            )
-        )
-        color_row.addStretch(1)
-        box_color_layout.addLayout(color_row)
+        tile_row.addStretch(1)
+        box_char_layout.addLayout(tile_row)
 
-        color_form = QFormLayout()
-        self.input_color_tolerance = QLineEdit(str(self.cfg.get("attack_color_tolerance", 6)))
-        self.input_color_tolerance.setFixedWidth(60)
-        color_form.addRow("Tolerância por canal (0 a 255, padrão 6)", self.input_color_tolerance)
-        self.input_color_min_pixels = QLineEdit(str(self.cfg.get("attack_color_min_pixels", 3)))
-        self.input_color_min_pixels.setFixedWidth(60)
-        color_form.addRow("Pixels mínimos (padrão 3)", self.input_color_min_pixels)
-        box_color_layout.addLayout(color_form)
+        layout.addWidget(box_char)
 
-        layout.addWidget(box_color)
-
-        box_corpse = QGroupBox("3. Bag de origem (corpo)")
+        box_corpse = QGroupBox("2. Bag de origem (corpo)")
         box_corpse_layout = QHBoxLayout(box_corpse)
         button_corpse = ActionButton("Capturar região do corpo...", variant="secondary")
         button_corpse.clicked.connect(self.pick_corpse_region)
@@ -282,7 +249,7 @@ class AutoLootModuleView:
         box_corpse_layout.addStretch(1)
         layout.addWidget(box_corpse)
 
-        box_dest = QGroupBox("4. Bag de destino")
+        box_dest = QGroupBox("3. Bag de destino")
         box_dest_layout = QHBoxLayout(box_dest)
         button_dest = ActionButton("Selecionar ponto de destino...", variant="secondary")
         button_dest.clicked.connect(self.pick_destination_point)
@@ -292,7 +259,7 @@ class AutoLootModuleView:
         box_dest_layout.addWidget(
             InfoIcon(
                 "Clique num ponto dentro da backpack para onde os itens encontrados serão arrastados.\n\n"
-                "Esse ponto não pode cair dentro da região da bag de origem (item 3) - se as duas bags "
+                "Esse ponto não pode cair dentro da região da bag de origem (item 2) - se as duas bags "
                 "ficarem sobrepostas na tela, o AutoLoot pode confundir item já guardado no destino com "
                 "item ainda no corpo."
             )
@@ -300,7 +267,7 @@ class AutoLootModuleView:
         box_dest_layout.addStretch(1)
         layout.addWidget(box_dest)
 
-        box_items = QGroupBox("5. Itens de loot")
+        box_items = QGroupBox("4. Itens de loot")
         box_items_layout = QVBoxLayout(box_items)
 
         self.list_items = QListWidget()
@@ -340,31 +307,16 @@ class AutoLootModuleView:
 
         layout.addWidget(box_items)
 
-        box_rate = QGroupBox("6. Ritmo e limites")
+        box_rate = QGroupBox("5. Ritmo e limites")
         rate_form = QFormLayout(box_rate)
 
         self.input_open_delay = QLineEdit(str(self.cfg.get("open_corpse_delay_s", 0.6)))
         self.input_open_delay.setFixedWidth(60)
-        rate_form.addRow("Espera após abrir o corpo (s)", self.input_open_delay)
+        rate_form.addRow("Espera após abrir cada corpo (s)", self.input_open_delay)
 
         self.input_check_interval = QLineEdit(str(self.cfg.get("check_interval", 0.3)))
         self.input_check_interval.setFixedWidth(60)
-        rate_form.addRow("Intervalo de checagem da morte (s)", self.input_check_interval)
-
-        death_confirm_row = QHBoxLayout()
-        self.input_death_confirm = QLineEdit(str(self.cfg.get("death_confirm_delay_s", 0.6)))
-        self.input_death_confirm.setFixedWidth(60)
-        death_confirm_row.addWidget(self.input_death_confirm)
-        death_confirm_row.addWidget(
-            InfoIcon(
-                "Tempo que a cor de ataque precisa ficar ausente antes de considerar que o monstro morreu.\n\n"
-                "Evita abrir corpo no lugar errado por causa de uma piscada rápida do marcador de ataque "
-                "(o monstro continua vivo, só a cor sumiu por um instante). Se ainda estiver abrindo corpo "
-                "onde não tem nada, aumente esse valor."
-            )
-        )
-        death_confirm_row.addStretch(1)
-        rate_form.addRow("Confirmação de morte (s)", death_confirm_row)
+        rate_form.addRow("Intervalo de checagem (s)", self.input_check_interval)
 
         self.input_scan_timeout = QLineEdit(str(self.cfg.get("loot_scan_timeout_s", 3.0)))
         self.input_scan_timeout.setFixedWidth(60)
@@ -392,22 +344,6 @@ class AutoLootModuleView:
         self.input_click_jitter.setFixedWidth(60)
         rate_form.addRow("Variação do clique/arraste (px)", self.input_click_jitter)
 
-        corner_offset_row = QHBoxLayout()
-        self.input_corner_offset = QLineEdit(str(self.cfg.get("open_corpse_corner_offset", 0)))
-        self.input_corner_offset.setFixedWidth(60)
-        corner_offset_row.addWidget(self.input_corner_offset)
-        corner_offset_row.addWidget(
-            InfoIcon(
-                "Desloca o clique de abrir corpo pro canto inferior direito do SQM em vez do centro.\n\n"
-                "Só importa quando tem muitos monstros na tela: o próximo pode morrer em cima do SQM do "
-                "corpo já morto, e como atacar e abrir corpo usam o mesmo botão direito, clicar no centro "
-                "pode acabar atacando o monstro de cima em vez de abrir o corpo de baixo. Comece em 0 e só "
-                "suba (ex: 10-14 px) se perceber esse problema."
-            )
-        )
-        corner_offset_row.addStretch(1)
-        rate_form.addRow("Deslocamento pro canto do SQM ao abrir corpo (px)", self.input_corner_offset)
-
         stuck_retries_row = QHBoxLayout()
         self.input_stuck_retries = QLineEdit(str(self.cfg.get("stuck_item_max_retries", 3)))
         self.input_stuck_retries.setFixedWidth(60)
@@ -424,10 +360,9 @@ class AutoLootModuleView:
         layout.addWidget(box_rate)
 
         warning_label = QLabel(
-            "Aviso: a coleta de itens verifica a região da bag de origem continuamente, mesmo se o corpo "
-            "for aberto manualmente ou pelo Cavebot - mas só enxerga um corpo por vez (o que estiver "
-            "visível nessa região). Matar vários monstros em sequência sem dar tempo de lotar cada corpo "
-            "não é tratado nesta versão."
+            "Aviso: a varredura dos 8 SQMs só acontece quando o Target confirma a Battle List vazia - se "
+            "algum SQM ao redor tiver um monstro vivo que não seja do Target (ex: passou por perto sem "
+            "engajar), o clique direito nele ataca em vez de abrir corpo."
         )
         warning_label.setStyleSheet("color: #a33;")
         warning_label.setWordWrap(True)
@@ -455,19 +390,33 @@ class AutoLootModuleView:
         self.config_dialog.raise_()
         self.config_dialog.activateWindow()
 
-    def pick_death_watch_region(self) -> None:
-        region = self.controller.select_region(
-            "Arraste cobrindo a área onde o monstro aparece  -  ESC cancela"
-        )
-        if not region:
+    def _update_tile_overlays(self) -> None:
+        point = self.cfg.get("character_point")
+        tile_size = int(self.cfg.get("tile_size_px", 32))
+        if not point or len(point) != 2:
+            for overlay in self.tile_overlays:
+                overlay.configure_region(None)
+                overlay.hide()
             return
-        self.cfg["death_watch_region"] = region
-        self.label_death_region.setText(region_text(region))
-        self.death_watch_overlay.configure_region(region)
-        self.controller.config_store.save()
-        self.controller.log(
-            f"Área de monitoramento da morte definida: {region_text(region)}", source="auto_loot"
+        cx, cy = int(point[0]), int(point[1])
+        half = tile_size // 2
+        for overlay, (dx, dy) in zip(self.tile_overlays, SURROUNDING_TILE_OFFSETS):
+            tx = cx + dx * tile_size - half
+            ty = cy + dy * tile_size - half
+            overlay.configure_region([tx, ty, tile_size, tile_size])
+            overlay.show()
+
+    def pick_character_point(self) -> None:
+        point = self.controller.select_point(
+            "Clique em cima do seu personagem (parado)  -  ESC cancela"
         )
+        if not point:
+            return
+        self.cfg["character_point"] = list(point)
+        self.label_char_point.setText(region_text(point))
+        self.controller.config_store.save()
+        self.controller.log(f"Posição do personagem definida: {region_text(point)}", source="auto_loot")
+        self._update_tile_overlays()
 
     def pick_corpse_region(self) -> None:
         region = self.controller.select_region(
@@ -489,32 +438,6 @@ class AutoLootModuleView:
         self.label_dest_point.setText(region_text(point))
         self.controller.config_store.save()
         self.controller.log(f"Ponto de destino definido: {region_text(point)}", source="auto_loot")
-
-    def copy_color_from_target(self) -> None:
-        target_cfg = self.controller.config_store.section("target")
-        rgb = target_cfg.get("attack_color_rgb")
-        if not rgb:
-            QMessageBox.information(
-                self.main_window, "AutoLoot", "O Target ainda não tem uma cor de ataque calibrada."
-            )
-            return
-        self.input_color_r.setText(str(rgb[0]))
-        self.input_color_g.setText(str(rgb[1]))
-        self.input_color_b.setText(str(rgb[2]))
-
-    def calibrate_color_from_screen(self) -> None:
-        region = self.controller.select_region(
-            "Recorte um pedacinho do marcador de ataque na tela do jogo  -  ESC cancela"
-        )
-        if not region:
-            return
-        with ScreenCapture() as cap:
-            frame = cap.grab(region)
-        r, g, b = sample_dominant_color(frame)
-        self.input_color_r.setText(str(r))
-        self.input_color_g.setText(str(g))
-        self.input_color_b.setText(str(b))
-        self.controller.log(f"Cor de ataque calibrada na tela: RGB {r},{g},{b}", source="auto_loot")
 
     def add_item(self) -> None:
         dialog = _AddLootItemDialog(self.controller, parent=self.config_dialog)
@@ -612,32 +535,23 @@ class AutoLootModuleView:
         return cfg
 
     def save_config(self) -> None:
-        self.cfg["attack_color_rgb"] = [
-            max(0, min(255, parse_int(self.input_color_r.text(), 254))),
-            max(0, min(255, parse_int(self.input_color_g.text(), 0))),
-            max(0, min(255, parse_int(self.input_color_b.text(), 0))),
-        ]
-        self.cfg["attack_color_tolerance"] = max(0, parse_int(self.input_color_tolerance.text(), 6))
-        self.cfg["attack_color_min_pixels"] = max(1, parse_int(self.input_color_min_pixels.text(), 3))
+        self.cfg["tile_size_px"] = max(1, parse_int(self.input_tile_size.text(), 32))
         self.cfg["open_corpse_delay_s"] = max(0.0, parse_float(self.input_open_delay.text(), 0.6))
         self.cfg["check_interval"] = max(0.05, parse_float(self.input_check_interval.text(), 0.3))
-        self.cfg["death_confirm_delay_s"] = max(0.0, parse_float(self.input_death_confirm.text(), 0.6))
         self.cfg["loot_scan_timeout_s"] = max(0.0, parse_float(self.input_scan_timeout.text(), 3.0))
         self.cfg["max_loot_passes"] = max(1, parse_int(self.input_max_passes.text(), 10))
         self.cfg["corpse_recheck_cooldown_s"] = max(
             0.0, parse_float(self.input_recheck_cooldown.text(), 3.0)
         )
         self.cfg["click_jitter"] = max(0, parse_int(self.input_click_jitter.text(), 2))
-        self.cfg["open_corpse_corner_offset"] = max(0, parse_int(self.input_corner_offset.text(), 0))
         self.cfg["stuck_item_max_retries"] = max(1, parse_int(self.input_stuck_retries.text(), 3))
         self.controller.config_store.save()
+        self._update_tile_overlays()
 
     def start(self) -> None:
         self.save_config()
-        if not is_valid_region(self.cfg.get("death_watch_region")):
-            QMessageBox.warning(
-                self.main_window, "AutoLoot", "Capture a área de monitoramento da morte primeiro."
-            )
+        if not self.cfg.get("character_point"):
+            QMessageBox.warning(self.main_window, "AutoLoot", "Selecione a posição do personagem primeiro.")
             return
         if not is_valid_region(self.cfg.get("corpse_region")):
             QMessageBox.warning(
@@ -659,16 +573,15 @@ class AutoLootModuleView:
         self.controller.stop_worker(self.worker_key)
 
     def close_overlays(self) -> None:
-        self.death_watch_overlay.hide()
         self.corpse_overlay.hide()
+        for overlay in self.tile_overlays:
+            overlay.hide()
 
     def on_state(self, state: str) -> None:
         self.card.set_state(state)
         if state in ("running", "paused"):
-            self.death_watch_overlay.show()
             self.corpse_overlay.show()
         else:
-            self.death_watch_overlay.hide()
             self.corpse_overlay.hide()
 
     def on_counter(self, value) -> None:
