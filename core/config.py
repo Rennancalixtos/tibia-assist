@@ -156,6 +156,21 @@ DEFAULTS: dict[str, Any] = {
         "max_search_failures": 3,
         "click_jitter": 2,
     },
+    "auto_loot": {
+        "death_watch_region": None,
+        "corpse_region": None,
+        "destination_point": None,
+        "attack_color_rgb": [254, 0, 0],
+        "attack_color_tolerance": 6,
+        "attack_color_min_pixels": 3,
+        "open_corpse_delay_s": 0.6,
+        "check_interval": 0.3,
+        "death_confirm_delay_s": 0.6,
+        "loot_scan_timeout_s": 3.0,
+        "max_loot_passes": 10,
+        "click_jitter": 2,
+        "loot_items": [],
+    },
 }
 
 

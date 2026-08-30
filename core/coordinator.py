@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 
-PRIORITY_ORDER = ["target", "training", "runemaker", "fishing", "auto_food", "cavebot"]
+PRIORITY_ORDER = ["auto_loot", "target", "training", "runemaker", "fishing", "auto_food", "cavebot"]
 
 
 def _priority_rank(name: str) -> int:

@@ -63,19 +63,29 @@ def battle_list_is_empty(frame: np.ndarray, template: np.ndarray | None, thresho
     return score >= threshold
 
 
+def color_mask(
+    frame: np.ndarray,
+    rgb: tuple[int, int, int] = (254, 0, 0),
+    tolerance: int = 6,
+) -> np.ndarray | None:
+    if frame is None or frame.size == 0:
+        return None
+    r, g, b = rgb
+    target_bgr = np.array([b, g, r], dtype=np.int16)
+    lower = np.clip(target_bgr - tolerance, 0, 255).astype(np.uint8)
+    upper = np.clip(target_bgr + tolerance, 0, 255).astype(np.uint8)
+    return cv2.inRange(frame, lower, upper)
+
+
 def attack_color_present(
     frame: np.ndarray,
     rgb: tuple[int, int, int] = (254, 0, 0),
     tolerance: int = 6,
     min_pixels: int = 3,
 ) -> bool:
-    if frame is None or frame.size == 0:
+    mask = color_mask(frame, rgb, tolerance)
+    if mask is None:
         return False
-    r, g, b = rgb
-    target_bgr = np.array([b, g, r], dtype=np.int16)
-    lower = np.clip(target_bgr - tolerance, 0, 255).astype(np.uint8)
-    upper = np.clip(target_bgr + tolerance, 0, 255).astype(np.uint8)
-    mask = cv2.inRange(frame, lower, upper)
     return int(np.count_nonzero(mask)) >= min_pixels
 
 
