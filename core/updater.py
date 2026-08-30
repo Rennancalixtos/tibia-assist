@@ -73,8 +73,9 @@ def apply_update(api_base_url: str, update_info: dict, on_progress=None) -> bool
     current_exe = sys.executable
     exe_name = os.path.basename(current_exe)
     exe_dir = os.path.dirname(current_exe)
-    zip_path = os.path.join(exe_dir, f"_update_{asset_name}")
-    staging_dir = os.path.join(exe_dir, "_update_staging")
+    pid = os.getpid()
+    zip_path = os.path.join(exe_dir, f"_update_{pid}_{asset_name}")
+    staging_dir = os.path.join(exe_dir, f"_update_staging_{pid}")
 
     api_base_url = api_base_url.rstrip("/")
     try:
@@ -121,12 +122,18 @@ def apply_update(api_base_url: str, update_info: dict, on_progress=None) -> bool
         shutil.rmtree(staging_dir, ignore_errors=True)
         return False
 
-    script_path = os.path.join(tempfile.gettempdir(), "tibia_assist_update.bat")
+    script_path = os.path.join(tempfile.gettempdir(), f"tibia_assist_update_{pid}.bat")
     with open(script_path, "w", encoding="utf-8") as fp:
         fp.write(
             "@echo off\r\n"
             "timeout /t 2 /nobreak >nul\r\n"
             f'robocopy "{staging_dir}" "{exe_dir}" /E /IS /IT /R:3 /W:1 /NFL /NDL /NJH /NJS >nul\r\n'
+            "if %errorlevel% GEQ 8 goto :falha\r\n"
+            f'rmdir /s /q "{staging_dir}"\r\n'
+            f'start "" "{current_exe}"\r\n'
+            'del "%~f0"\r\n'
+            "exit /b 0\r\n"
+            ":falha\r\n"
             f'rmdir /s /q "{staging_dir}"\r\n'
             f'start "" "{current_exe}"\r\n'
             'del "%~f0"\r\n'

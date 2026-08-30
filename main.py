@@ -13,6 +13,24 @@ if sys.platform == "win32":
         except Exception:
             pass
 
+_ERROR_ALREADY_EXISTS = 183
+_update_lock_handle = None
+
+
+def _acquire_update_lock() -> bool:
+    global _update_lock_handle
+    if sys.platform != "win32":
+        return True
+    try:
+        handle = ctypes.windll.kernel32.CreateMutexW(None, False, "Local\\EasyF_UpdateCheck")
+        if not handle:
+            return True
+        _update_lock_handle = handle
+        return ctypes.windll.kernel32.GetLastError() != _ERROR_ALREADY_EXISTS
+    except Exception:
+        return True
+
+
 REQUIRED = [
     ("mss", "mss"),
     ("cv2", "opencv-python"),
@@ -82,10 +100,11 @@ def main() -> int:
     api_base_url = config_store.get("license.api_base_url", "")
     license_manager = LicenseManager(config_store.section("license"))
 
-    update_result = run_update_check(api_base_url, APP_VERSION, license_manager)
-    config_store.save()
-    if update_result == "updated":
-        return 0
+    if _acquire_update_lock():
+        update_result = run_update_check(api_base_url, APP_VERSION, license_manager)
+        config_store.save()
+        if update_result == "updated":
+            return 0
 
     while True:
         if not prompt_login(license_manager, config_store.save):
