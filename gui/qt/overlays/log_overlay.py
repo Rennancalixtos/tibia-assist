@@ -11,12 +11,14 @@ _HEIGHT = 170
 _MARGIN_X = 10
 _MARGIN_Y = 48
 _MAX_LINES = 200
+_CHAT_MARGIN = 8
 
 
 class LogOverlay(QWidget):
     def __init__(self, hwnd_resolver=None, parent=None):
         super().__init__(parent, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self._hwnd_resolver = hwnd_resolver
+        self._chat_region: tuple[int, int, int, int] | None = None
         self.setAttribute(Qt.WA_ShowWithoutActivating, True)
         self.setWindowOpacity(0.85)
         self.setStyleSheet("background-color: #0e1015;")
@@ -35,7 +37,20 @@ class LogOverlay(QWidget):
 
         self._layout_position()
 
+    def configure_chat_region(self, region) -> None:
+        self._chat_region = tuple(region) if region and len(region) == 4 else None
+        self._layout_position()
+
     def _layout_position(self) -> None:
+        if self._chat_region is not None:
+            cx, cy, cw, ch = self._chat_region
+            box_width = max(200, cw // 2 - _CHAT_MARGIN)
+            box_height = min(_HEIGHT, max(60, ch - 2 * _CHAT_MARGIN))
+            x = cx + cw - box_width - _CHAT_MARGIN
+            y = cy + ch - box_height - _CHAT_MARGIN
+            self.setGeometry(max(0, x), max(0, y), box_width, box_height)
+            return
+
         rect = self._client_rect()
         if rect is not None:
             left, top, width, height = rect

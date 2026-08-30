@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 
 from core.config import ASSETS_DIR
 from core.screen_capture import ScreenCapture, is_valid_region, save_image
-from functions.auto_loot import AutoLootWorker, resolve_icon_path
+from functions.auto_loot import AutoLootWorker, resolve_icon_path, sample_dominant_color
 from gui.qt.components.action_button import ActionButton
 from gui.qt.components.info_tooltip import InfoIcon
 from gui.qt.components.module_card import ModuleCard
@@ -40,6 +40,10 @@ GOLD_PRESET_ITEMS = [
     {"icon": "img/itens/gold/gold_10_24.png", "nome": "Moeda de ouro (10-24)", "confidence": 0.75},
     {"icon": "img/itens/gold/gold_26_49.png", "nome": "Moeda de ouro (26-49)", "confidence": 0.75},
     {"icon": "img/itens/gold/gold_50_100.png", "nome": "Moeda de ouro (50-100)", "confidence": 0.75},
+]
+
+MUSHROOM_PRESET_ITEMS = [
+    {"icon": "img/food/whitemushrooms.png", "nome": "White Mushroom", "confidence": 0.85},
 ]
 
 
@@ -233,6 +237,19 @@ class AutoLootModuleView:
                 "Se o Target já estiver calibrado, use 'Copiar do Target' em vez de recalibrar do zero."
             )
         )
+        button_calibrate_screen = ActionButton("Calibrar cor na tela...", variant="secondary")
+        button_calibrate_screen.clicked.connect(self.calibrate_color_from_screen)
+        color_row.addWidget(button_calibrate_screen)
+        color_row.addWidget(
+            InfoIcon(
+                "Recorte um pedacinho bem em cima do marcador/quadrado de ataque na tela do jogo (com um "
+                "monstro selecionado) - ESC cancela.\n\n"
+                "Use isso em vez de 'Copiar do Target' se estiver abrindo corpo à toa em monstros de cor "
+                "forte (ex: vermelhos) - a cor da Battle List pode não ser exatamente igual à do marcador "
+                "na tela. Depois de calibrar aqui, considere baixar a tolerância (ex: 2 a 4) pra não "
+                "confundir com a roupa do monstro."
+            )
+        )
         color_row.addStretch(1)
         box_color_layout.addLayout(color_row)
 
@@ -303,6 +320,9 @@ class AutoLootModuleView:
                 "quantidade: 1, 2, 3, 4, 5-9, 10-24, 26-49, 50-100) - não precisa capturar nada na tela."
             )
         )
+        button_mushroom_preset = ActionButton("Adicionar predefinição: White Mushroom", variant="secondary")
+        button_mushroom_preset.clicked.connect(self.add_mushroom_preset)
+        items_actions.addWidget(button_mushroom_preset)
         button_edit = ActionButton("Editar selecionado...", variant="secondary")
         button_edit.clicked.connect(self.edit_item)
         items_actions.addWidget(button_edit)
@@ -354,9 +374,52 @@ class AutoLootModuleView:
         self.input_max_passes.setFixedWidth(60)
         rate_form.addRow("Passadas máximas de loot por corpo", self.input_max_passes)
 
+        cooldown_row = QHBoxLayout()
+        self.input_recheck_cooldown = QLineEdit(str(self.cfg.get("corpse_recheck_cooldown_s", 3.0)))
+        self.input_recheck_cooldown.setFixedWidth(60)
+        cooldown_row.addWidget(self.input_recheck_cooldown)
+        cooldown_row.addWidget(
+            InfoIcon(
+                "Depois de checar a bag do corpo e não conseguir recolher nada (ex: item preso, sem "
+                "espaço no destino), espera esse tempo antes de checar de novo - evita ficar tomando o "
+                "chão de outras rotinas repetidamente por causa de um item que não sai do lugar."
+            )
+        )
+        cooldown_row.addStretch(1)
+        rate_form.addRow("Espera após falha na coleta (s)", cooldown_row)
+
         self.input_click_jitter = QLineEdit(str(self.cfg.get("click_jitter", 2)))
         self.input_click_jitter.setFixedWidth(60)
         rate_form.addRow("Variação do clique/arraste (px)", self.input_click_jitter)
+
+        corner_offset_row = QHBoxLayout()
+        self.input_corner_offset = QLineEdit(str(self.cfg.get("open_corpse_corner_offset", 0)))
+        self.input_corner_offset.setFixedWidth(60)
+        corner_offset_row.addWidget(self.input_corner_offset)
+        corner_offset_row.addWidget(
+            InfoIcon(
+                "Desloca o clique de abrir corpo pro canto inferior direito do SQM em vez do centro.\n\n"
+                "Só importa quando tem muitos monstros na tela: o próximo pode morrer em cima do SQM do "
+                "corpo já morto, e como atacar e abrir corpo usam o mesmo botão direito, clicar no centro "
+                "pode acabar atacando o monstro de cima em vez de abrir o corpo de baixo. Comece em 0 e só "
+                "suba (ex: 10-14 px) se perceber esse problema."
+            )
+        )
+        corner_offset_row.addStretch(1)
+        rate_form.addRow("Deslocamento pro canto do SQM ao abrir corpo (px)", self.input_corner_offset)
+
+        stuck_retries_row = QHBoxLayout()
+        self.input_stuck_retries = QLineEdit(str(self.cfg.get("stuck_item_max_retries", 3)))
+        self.input_stuck_retries.setFixedWidth(60)
+        stuck_retries_row.addWidget(self.input_stuck_retries)
+        stuck_retries_row.addWidget(
+            InfoIcon(
+                "Quantas vezes tenta arrastar o mesmo item antes de desistir e avisar que provavelmente "
+                "é capacidade (cap) ou bag de destino cheia."
+            )
+        )
+        stuck_retries_row.addStretch(1)
+        rate_form.addRow("Tentativas antes de avisar item preso/cap cheia", stuck_retries_row)
 
         layout.addWidget(box_rate)
 
@@ -439,6 +502,20 @@ class AutoLootModuleView:
         self.input_color_g.setText(str(rgb[1]))
         self.input_color_b.setText(str(rgb[2]))
 
+    def calibrate_color_from_screen(self) -> None:
+        region = self.controller.select_region(
+            "Recorte um pedacinho do marcador de ataque na tela do jogo  -  ESC cancela"
+        )
+        if not region:
+            return
+        with ScreenCapture() as cap:
+            frame = cap.grab(region)
+        r, g, b = sample_dominant_color(frame)
+        self.input_color_r.setText(str(r))
+        self.input_color_g.setText(str(g))
+        self.input_color_b.setText(str(b))
+        self.controller.log(f"Cor de ataque calibrada na tela: RGB {r},{g},{b}", source="auto_loot")
+
     def add_item(self) -> None:
         dialog = _AddLootItemDialog(self.controller, parent=self.config_dialog)
         if dialog.exec() != QDialog.Accepted:
@@ -452,26 +529,32 @@ class AutoLootModuleView:
         self._refresh_item_list()
         self.controller.config_store.save()
 
-    def add_gold_preset(self) -> None:
+    def _add_preset_items(self, preset_items: list[dict], preset_label: str) -> None:
         items = list(self.cfg.get("loot_items") or [])
         existing_icons = {item.get("icon") for item in items}
         added = 0
-        for preset in GOLD_PRESET_ITEMS:
+        for preset in preset_items:
             if preset["icon"] in existing_icons:
                 continue
             items.append(dict(preset))
             added += 1
         if added == 0:
             QMessageBox.information(
-                self.main_window, "AutoLoot", "A predefinição de moeda de ouro já está toda adicionada."
+                self.main_window, "AutoLoot", f"A predefinição de {preset_label} já está toda adicionada."
             )
             return
         self.cfg["loot_items"] = items
         self._refresh_item_list()
         self.controller.config_store.save()
         self.controller.log(
-            f"Predefinição de moeda de ouro adicionada ({added} ícone(s)).", source="auto_loot"
+            f"Predefinição de {preset_label} adicionada ({added} ícone(s)).", source="auto_loot"
         )
+
+    def add_gold_preset(self) -> None:
+        self._add_preset_items(GOLD_PRESET_ITEMS, "moeda de ouro")
+
+    def add_mushroom_preset(self) -> None:
+        self._add_preset_items(MUSHROOM_PRESET_ITEMS, "white mushroom")
 
     def edit_item(self) -> None:
         row = self.list_items.currentRow()
@@ -541,7 +624,12 @@ class AutoLootModuleView:
         self.cfg["death_confirm_delay_s"] = max(0.0, parse_float(self.input_death_confirm.text(), 0.6))
         self.cfg["loot_scan_timeout_s"] = max(0.0, parse_float(self.input_scan_timeout.text(), 3.0))
         self.cfg["max_loot_passes"] = max(1, parse_int(self.input_max_passes.text(), 10))
+        self.cfg["corpse_recheck_cooldown_s"] = max(
+            0.0, parse_float(self.input_recheck_cooldown.text(), 3.0)
+        )
         self.cfg["click_jitter"] = max(0, parse_int(self.input_click_jitter.text(), 2))
+        self.cfg["open_corpse_corner_offset"] = max(0, parse_int(self.input_corner_offset.text(), 0))
+        self.cfg["stuck_item_max_retries"] = max(1, parse_int(self.input_stuck_retries.text(), 3))
         self.controller.config_store.save()
 
     def start(self) -> None:

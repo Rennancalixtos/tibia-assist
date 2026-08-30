@@ -102,7 +102,7 @@ class AutoFoodWorker(BaseWorker):
             frame = self.capture.grab(region)
             clicked = False
             for nome, icon in self.icons.items():
-                if not self.sleep(self.check_interval):
+                if not self.wait_for_higher_priority():
                     return
                 match = self._locate_icon(frame, icon)
                 if match:
@@ -124,4 +124,7 @@ class AutoFoodWorker(BaseWorker):
 
             if clicked:
                 if not self.sleep(self.eat_cooldown):
+                    return
+            else:
+                if not self.sleep(self.check_interval):
                     return

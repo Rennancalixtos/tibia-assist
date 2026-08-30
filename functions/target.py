@@ -212,19 +212,25 @@ class TargetWorker(BaseWorker):
         return True
 
     def _engage(self) -> bool:
-        while not self.stopped:
-            if not self.is_attacking():
-                if not self._attack_once():
+        if self.coordinator:
+            self.coordinator.set_engaged("target", True)
+        try:
+            while not self.stopped:
+                if not self.wait_for_higher_priority():
                     return False
-            if not self.wait_for_higher_priority():
-                return False
-            if not self.sleep(InputSimulator.random_delay(
-                self.config.get("engaged_delay_min", 1.0), self.config.get("engaged_delay_max", 2.0)
-            )):
-                return False
-            if self.is_battle_list_empty():
-                return True
-        return False
+                if not self.is_attacking():
+                    if not self._attack_once():
+                        return False
+                if not self.sleep(InputSimulator.random_delay(
+                    self.config.get("engaged_delay_min", 1.0), self.config.get("engaged_delay_max", 2.0)
+                )):
+                    return False
+                if self.is_battle_list_empty():
+                    return True
+            return False
+        finally:
+            if self.coordinator:
+                self.coordinator.set_engaged("target", False)
 
     def loop(self) -> None:
         while not self.stopped:

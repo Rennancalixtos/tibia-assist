@@ -26,6 +26,47 @@ def point_in_region(x: int, y: int, region) -> bool:
     return rx <= x < rx + rw and ry <= y < ry + rh
 
 
+def sample_dominant_color(frame: np.ndarray) -> tuple[int, int, int]:
+    mean_bgr = frame.reshape(-1, 3).mean(axis=0)
+    b, g, r = mean_bgr
+    return int(round(r)), int(round(g)), int(round(b))
+
+
+def _find_marker_square(mask: np.ndarray) -> tuple[int, int] | None:
+    contours, hierarchy = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours or hierarchy is None:
+        return None
+    hierarchy = hierarchy[0]
+    best = None
+    best_area = 0
+    for i, contour in enumerate(contours):
+        has_hole = hierarchy[i][2] != -1
+        if not has_hole:
+            continue
+        x, y, w, h = cv2.boundingRect(contour)
+        if w < 6 or h < 6:
+            continue
+        aspect = w / h
+        if not (0.65 <= aspect <= 1.55):
+            continue
+
+        box_area = w * h
+        contour_area = cv2.contourArea(contour)
+        extent = contour_area / box_area if box_area > 0 else 0
+        if extent < 0.75:
+            continue
+
+        perimeter = cv2.arcLength(contour, True)
+        approx = cv2.approxPolyDP(contour, 0.04 * perimeter, True)
+        if len(approx) > 6:
+            continue
+
+        if box_area > best_area:
+            best_area = box_area
+            best = (x + w // 2, y + h // 2)
+    return best
+
+
 def attack_color_centroid(
     frame: np.ndarray,
     rgb: tuple[int, int, int] = (254, 0, 0),
@@ -33,7 +74,14 @@ def attack_color_centroid(
     min_pixels: int = 3,
 ) -> tuple[int, int] | None:
     mask = color_mask(frame, rgb, tolerance)
-    if mask is None or int(np.count_nonzero(mask)) < min_pixels:
+    if mask is None:
+        return None
+
+    marker = _find_marker_square(mask)
+    if marker is not None:
+        return marker
+
+    if int(np.count_nonzero(mask)) < min_pixels:
         return None
     points = cv2.findNonZero(mask)
     if points is None:
@@ -87,7 +135,12 @@ class AutoLootWorker(BaseWorker):
         self.death_confirm_delay_s = float(self.config.get("death_confirm_delay_s", 0.6))
         self.loot_scan_timeout_s = float(self.config.get("loot_scan_timeout_s", 3.0))
         self.max_loot_passes = int(self.config.get("max_loot_passes", 10))
+        self.corpse_recheck_cooldown_s = float(self.config.get("corpse_recheck_cooldown_s", 3.0))
         self.click_jitter = int(self.config.get("click_jitter", 2))
+        self.open_corpse_corner_offset = int(self.config.get("open_corpse_corner_offset", 0))
+        self.stuck_item_max_retries = max(1, int(self.config.get("stuck_item_max_retries", 3)))
+
+        self._cap_warning_shown = False
 
         self.icons: dict[str, tuple[np.ndarray, np.ndarray | None]] = {}
         for item in self.loot_items:
@@ -162,10 +215,43 @@ class AutoLootWorker(BaseWorker):
                 src_x = int(self.corpse_region[0]) + rel_x
                 src_y = int(self.corpse_region[1]) + rel_y
                 dest_x, dest_y = int(self.destination_point[0]), int(self.destination_point[1])
-                self.mouse.drag(
-                    src_x, src_y, dest_x, dest_y,
-                    from_jitter=self.click_jitter, to_jitter=self.click_jitter,
-                )
+
+                stuck_attempts = 0
+                while True:
+                    self.mouse.drag(
+                        src_x, src_y, dest_x, dest_y,
+                        from_jitter=self.click_jitter, to_jitter=self.click_jitter,
+                    )
+                    if not self.sleep(self.check_interval):
+                        return False
+
+                    after_frame = self.capture.grab(self.corpse_region)
+                    still_found = self._find_loot_item(after_frame)
+                    stuck = (
+                        still_found is not None
+                        and abs(still_found[1] - rel_x) <= self.click_jitter + 2
+                        and abs(still_found[2] - rel_y) <= self.click_jitter + 2
+                    )
+                    if not stuck:
+                        break
+
+                    stuck_attempts += 1
+                    if stuck_attempts >= self.stuck_item_max_retries:
+                        self.log(
+                            f"Item continua na mesma posição após {stuck_attempts} tentativas - "
+                            "provável capacidade (cap) ou bag de destino cheia. Parando essa passada."
+                        )
+                        if not self._cap_warning_shown:
+                            self._cap_warning_shown = True
+                            self.warn_popup(
+                                "AutoLoot não conseguiu mover um item pro destino - verifique se a "
+                                "capacidade (cap) ou a bag de destino estão cheias."
+                            )
+                        return False
+
+                    if not self.wait_for_higher_priority():
+                        return False
+
                 self.bump_counter()
                 nome = item.get("nome") or os.path.basename(item.get("icon") or "?")
                 self.log(f"Item recolhido: {nome} (#{self.counter}).")
@@ -178,41 +264,58 @@ class AutoLootWorker(BaseWorker):
                 return False
             remaining -= step
 
-    def _open_corpse(self, xy: tuple[int, int]) -> None:
+    def _collect_loot_passes(self) -> int:
+        collected = 0
+        for _ in range(self.max_loot_passes):
+            if not self.wait_for_higher_priority():
+                return collected
+            if not self._loot_pass():
+                if not self.stopped:
+                    self.log("Nada mais encontrado no corpo.")
+                return collected
+            collected += 1
+        self.log(f"Limite de {self.max_loot_passes} passada(s) de loot atingido - encerrando por segurança.")
+        return collected
+
+    def _open_corpse_and_collect(self, xy: tuple[int, int]) -> None:
         if not self.request_floor(timeout=5.0):
-            self.log("Abertura de corpo cancelada: outra rotina de prioridade maior não liberou o chão.")
+            self.log("Sequência de loot cancelada: outra rotina de prioridade maior não liberou o chão.")
             return
         try:
-            x, y = xy
             if not self.wait_for_higher_priority():
                 return
+
+            recheck_frame = self.capture.grab(self.death_watch_region)
+            if attack_color_centroid(
+                recheck_frame, self.attack_rgb, self.attack_tolerance, self.attack_min_pixels
+            ) is not None:
+                self.log("Falso alarme - cor de ataque reapareceu antes do clique, corpo não será aberto.")
+                return
+
+            x, y = xy
+            x += self.open_corpse_corner_offset
+            y += self.open_corpse_corner_offset
             self.mouse.click(x, y, button="right", jitter=self.click_jitter)
             self.log(f"Corpo aberto em x={x} y={y}.")
-            self.sleep(self.open_corpse_delay_s)
+            if not self.sleep(self.open_corpse_delay_s):
+                return
+            self._collect_loot_passes()
         finally:
             self.release_floor()
 
-    def _collect_loot(self) -> None:
+    def _collect_loot(self) -> int:
         if not self.request_floor(timeout=5.0):
             self.log("Coleta de loot cancelada: outra rotina de prioridade maior não liberou o chão.")
-            return
+            return 0
         try:
-            for _ in range(self.max_loot_passes):
-                if not self.wait_for_higher_priority():
-                    return
-                if not self._loot_pass():
-                    if not self.stopped:
-                        self.log("Nada mais encontrado no corpo.")
-                    return
-            self.log(
-                f"Limite de {self.max_loot_passes} passada(s) de loot atingido - encerrando por segurança."
-            )
+            return self._collect_loot_passes()
         finally:
             self.release_floor()
 
     def loop(self) -> None:
         last_seen_xy: tuple[int, int] | None = None
         absent_since: float | None = None
+        corpse_idle_until: float | None = None
 
         while not self.stopped:
             if not self.wait_while_paused():
@@ -225,30 +328,43 @@ class AutoLootWorker(BaseWorker):
             ):
                 self.coordinator.confirm_paused(self._coordinator_name)
 
+            target_engaged = (
+                self.coordinator.is_engaged("target")
+                if self.coordinator and self.coordinator.is_active("target")
+                else True
+            )
+
             death_frame = self.capture.grab(self.death_watch_region)
             centroid = attack_color_centroid(
                 death_frame, self.attack_rgb, self.attack_tolerance, self.attack_min_pixels
             )
 
             if centroid is not None:
-                last_seen_xy = (
-                    int(self.death_watch_region[0]) + centroid[0],
-                    int(self.death_watch_region[1]) + centroid[1],
-                )
+                if last_seen_xy is not None or target_engaged:
+                    last_seen_xy = (
+                        int(self.death_watch_region[0]) + centroid[0],
+                        int(self.death_watch_region[1]) + centroid[1],
+                    )
                 absent_since = None
             elif last_seen_xy is not None:
                 now = time.monotonic()
                 if absent_since is None:
                     absent_since = now
                 elif now - absent_since >= self.death_confirm_delay_s:
-                    self.log("Morte detectada - abrindo corpo.")
-                    self._open_corpse(last_seen_xy)
+                    self.log("Morte detectada - abrindo corpo e coletando o loot.")
+                    self._open_corpse_and_collect(last_seen_xy)
                     last_seen_xy = None
                     absent_since = None
+                    corpse_idle_until = None
 
-            corpse_frame = self.capture.grab(self.corpse_region)
-            if self._find_loot_item(corpse_frame) is not None:
-                self._collect_loot()
+            now = time.monotonic()
+            if corpse_idle_until is None or now >= corpse_idle_until:
+                corpse_frame = self.capture.grab(self.corpse_region)
+                if self._find_loot_item(corpse_frame) is not None:
+                    collected = self._collect_loot()
+                    corpse_idle_until = (
+                        None if collected > 0 else time.monotonic() + self.corpse_recheck_cooldown_s
+                    )
 
             if not self.sleep(self.check_interval):
                 return
