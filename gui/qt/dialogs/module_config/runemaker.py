@@ -53,11 +53,13 @@ class RuneMakerModuleView:
 
         self.mana_overlay = ManaOverlay(main_window, log_overlay=main_window.log_overlay)
         self.mana_overlay.configure_region(self.cfg.get("mana_region"))
+        self._last_state = "stopped"
 
         self._build_config_dialog()
 
         controller.register_module_view("runemaker", self)
         controller.module_event.connect(self._on_module_event)
+        controller.region_overlays_toggled.connect(self._apply_overlay_visibility)
 
         self._on_mode_change()
 
@@ -513,7 +515,11 @@ class RuneMakerModuleView:
         self.radio_craft.setEnabled(not running)
         self.radio_mana_training.setEnabled(not running)
         self.chk_no_hand.setEnabled(not running)
-        if running:
+        self._last_state = state
+        self._apply_overlay_visibility()
+
+    def _apply_overlay_visibility(self) -> None:
+        if self._last_state in ("running", "paused") and self.controller.region_overlays_enabled:
             self.mana_overlay.show()
         else:
             self.mana_overlay.hide()

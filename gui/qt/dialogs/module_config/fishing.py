@@ -79,6 +79,7 @@ class FishingModuleView:
         self.card.configure_requested.connect(self.open_config_dialog)
 
         self.warning_overlay = FishingWarningOverlay(hwnd_resolver=controller.resolve_game_window_hwnd, parent=main_window)
+        self._last_state = "stopped"
 
         self.config_dialog = _ConfigDialog(main_window)
         self.config_dialog.setWindowTitle("Configurar - AutoFishing")
@@ -87,6 +88,7 @@ class FishingModuleView:
 
         controller.register_module_view("fishing", self)
         controller.module_event.connect(self._on_module_event)
+        controller.region_overlays_toggled.connect(self._apply_overlay_visibility)
 
     def _build_config_dialog(self) -> None:
         outer = QVBoxLayout(self.config_dialog)
@@ -432,12 +434,16 @@ class FishingModuleView:
     def stop(self) -> None:
         self.controller.stop_worker(self.worker_key)
 
-    def on_state(self, state: str) -> None:
-        self.card.set_state(state)
-        if state in ("running", "paused"):
+    def _apply_overlay_visibility(self) -> None:
+        if self._last_state in ("running", "paused") and self.controller.region_overlays_enabled:
             self.warning_overlay.show()
         else:
             self.warning_overlay.hide()
+
+    def on_state(self, state: str) -> None:
+        self.card.set_state(state)
+        self._last_state = state
+        self._apply_overlay_visibility()
 
     def on_counter(self, value: int) -> None:
         self.card.set_stat("counter", str(value))

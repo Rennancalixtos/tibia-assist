@@ -168,6 +168,7 @@ class AutoLootModuleView:
 
         self.corpse_overlay = ManaOverlay(main_window)
         self.corpse_overlay.configure_region(self.cfg.get("corpse_region"))
+        self._last_state = "stopped"
 
         self.tile_overlays = [ManaOverlay(main_window) for _ in SURROUNDING_TILE_OFFSETS]
         self._update_tile_overlays()
@@ -179,6 +180,7 @@ class AutoLootModuleView:
 
         controller.register_module_view("auto_loot", self)
         controller.module_event.connect(self._on_module_event)
+        controller.region_overlays_toggled.connect(self._on_region_overlays_toggled)
 
     def _build_config_dialog(self) -> None:
         outer = QVBoxLayout(self.config_dialog)
@@ -390,10 +392,20 @@ class AutoLootModuleView:
         self.config_dialog.raise_()
         self.config_dialog.activateWindow()
 
+    def _on_region_overlays_toggled(self, _enabled: bool) -> None:
+        self._update_tile_overlays()
+        self._apply_corpse_overlay_visibility()
+
+    def _apply_corpse_overlay_visibility(self) -> None:
+        if self._last_state in ("running", "paused") and self.controller.region_overlays_enabled:
+            self.corpse_overlay.show()
+        else:
+            self.corpse_overlay.hide()
+
     def _update_tile_overlays(self) -> None:
         point = self.cfg.get("character_point")
         tile_size = int(self.cfg.get("tile_size_px", 32))
-        if not point or len(point) != 2:
+        if not point or len(point) != 2 or not self.controller.region_overlays_enabled:
             for overlay in self.tile_overlays:
                 overlay.configure_region(None)
                 overlay.hide()
@@ -579,10 +591,8 @@ class AutoLootModuleView:
 
     def on_state(self, state: str) -> None:
         self.card.set_state(state)
-        if state in ("running", "paused"):
-            self.corpse_overlay.show()
-        else:
-            self.corpse_overlay.hide()
+        self._last_state = state
+        self._apply_corpse_overlay_visibility()
 
     def on_counter(self, value) -> None:
         self.card.set_stat("counter", str(value))

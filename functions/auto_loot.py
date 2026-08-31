@@ -250,9 +250,12 @@ class AutoLootWorker(BaseWorker):
         finally:
             self.release_floor()
 
+    ENGAGED_POLL_INTERVAL = 0.05
+
     def loop(self) -> None:
         was_engaged = False
         corpse_idle_until: float | None = None
+        last_corpse_check = 0.0
 
         while not self.stopped:
             if not self.wait_while_paused():
@@ -278,7 +281,10 @@ class AutoLootWorker(BaseWorker):
             was_engaged = target_engaged
 
             now = time.monotonic()
-            if corpse_idle_until is None or now >= corpse_idle_until:
+            if (corpse_idle_until is None or now >= corpse_idle_until) and (
+                now - last_corpse_check >= self.check_interval
+            ):
+                last_corpse_check = now
                 corpse_frame = self.capture.grab(self.corpse_region)
                 if self._find_loot_item(corpse_frame) is not None:
                     collected = self._collect_loot()
@@ -286,5 +292,6 @@ class AutoLootWorker(BaseWorker):
                         None if collected > 0 else time.monotonic() + self.corpse_recheck_cooldown_s
                     )
 
-            if not self.sleep(self.check_interval):
+            poll_interval = self.ENGAGED_POLL_INTERVAL if target_engaged else self.check_interval
+            if not self.sleep(poll_interval):
                 return

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import os
+
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QFileDialog,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -166,6 +170,16 @@ class SettingsPage(QWidget):
         load_row.addWidget(delete_button)
         layout.addLayout(load_row)
 
+        share_row = QHBoxLayout()
+        export_button = ActionButton("Exportar para arquivo...", variant="secondary")
+        export_button.clicked.connect(self._export_profile)
+        share_row.addWidget(export_button)
+        import_button = ActionButton("Importar de arquivo...", variant="secondary")
+        import_button.clicked.connect(self._import_profile)
+        share_row.addWidget(import_button)
+        share_row.addStretch(1)
+        layout.addLayout(share_row)
+
         self.profile_status_label = QLabel("")
         self.profile_status_label.setObjectName("StatLabel")
         self.profile_status_label.setWordWrap(True)
@@ -173,7 +187,9 @@ class SettingsPage(QWidget):
 
         hint = QLabel(
             "Um perfil guarda todas as configurações das abas, hotkeys e modo background "
-            "(a conta logada não entra no perfil). Carregar um perfil pede pra reiniciar o app."
+            "(a conta logada não entra no perfil). Carregar um perfil pede pra reiniciar o app.\n\n"
+            "Exportar salva o perfil selecionado num arquivo .json à sua escolha (pra compartilhar ou "
+            "guardar em outro lugar). Importar lê um desses arquivos e adiciona à lista de perfis salvos."
         )
         hint.setObjectName("StatLabel")
         hint.setWordWrap(True)
@@ -232,6 +248,44 @@ class SettingsPage(QWidget):
             APP_NAME,
             f"Perfil {name!r} aplicado. Feche e abra o {APP_NAME} de novo para usar as novas configurações.",
         )
+
+    def _export_profile(self) -> None:
+        name = self.profile_combo.currentText().strip()
+        if not name:
+            QMessageBox.warning(self, APP_NAME, "Selecione um perfil salvo para exportar primeiro.")
+            return
+        dest_path, _filter = QFileDialog.getSaveFileName(
+            self, "Exportar perfil", f"{name}.json", "Arquivo de perfil (*.json)"
+        )
+        if not dest_path:
+            return
+        try:
+            profile_store.export_profile(name, dest_path)
+        except Exception as exc:
+            QMessageBox.critical(self, APP_NAME, f"Falha ao exportar perfil: {exc}")
+            return
+        self.profile_status_label.setText(f"Perfil {name!r} exportado para {dest_path!r}.")
+
+    def _import_profile(self) -> None:
+        src_path, _filter = QFileDialog.getOpenFileName(
+            self, "Importar perfil", "", "Arquivo de perfil (*.json)"
+        )
+        if not src_path:
+            return
+        default_name = os.path.splitext(os.path.basename(src_path))[0]
+        name, ok = QInputDialog.getText(
+            self, APP_NAME, "Nome pra salvar esse perfil importado:", text=default_name
+        )
+        if not ok or not name.strip():
+            return
+        try:
+            saved_name = profile_store.import_profile_file(src_path, name.strip())
+        except Exception as exc:
+            QMessageBox.critical(self, APP_NAME, f"Falha ao importar perfil: {exc}")
+            return
+        self.profile_status_label.setText(f"Perfil {saved_name!r} importado.")
+        self._refresh_profile_list()
+        self.profile_combo.setCurrentText(saved_name)
 
     def _delete_profile(self) -> None:
         name = self.profile_combo.currentText().strip()

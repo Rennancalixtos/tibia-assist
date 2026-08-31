@@ -45,6 +45,7 @@ class Controller(QObject):
     module_event = Signal(str, str, object)
     log_line = Signal(str)
     popup_warning = Signal(str, str)
+    region_overlays_toggled = Signal(bool)
     auto_food_state_changed = Signal(str)
     auto_food_counter_changed = Signal(str)
     account_info_changed = Signal(str, str)
@@ -78,6 +79,7 @@ class Controller(QObject):
         log_cfg = self.config_store.section("log")
         self.log_overlay_enabled = bool(log_cfg.get("overlay_enabled", True))
         self.log_panel_enabled = bool(log_cfg.get("panel_enabled", False))
+        self.region_overlays_enabled = bool(log_cfg.get("region_overlays_enabled", True))
 
         self._hotkey_handles: list = []
 
@@ -298,6 +300,12 @@ class Controller(QObject):
         self.config_store.section("log")["overlay_enabled"] = self.log_overlay_enabled
         self.config_store.save()
 
+    def toggle_region_overlays(self, enabled: bool) -> None:
+        self.region_overlays_enabled = bool(enabled)
+        self.config_store.section("log")["region_overlays_enabled"] = self.region_overlays_enabled
+        self.config_store.save()
+        self.region_overlays_toggled.emit(self.region_overlays_enabled)
+
     def toggle_log_panel(self, enabled: bool) -> None:
         self.log_panel_enabled = bool(enabled)
         self.config_store.section("log")["panel_enabled"] = self.log_panel_enabled
@@ -358,11 +366,11 @@ class Controller(QObject):
             worker.toggle_pause()
 
     def sync_config_from_ui(self) -> None:
-        for view in self.module_views.values():
+        for name, view in self.module_views.items():
             try:
                 view.save_config()
-            except Exception:
-                pass
+            except Exception as exc:
+                self.log(f"Falha ao sincronizar configuração antes de salvar/exportar: {exc}", source=name)
 
     def apply_profile_data(self, data: dict) -> None:
         self.config_store.data = profile_store.merge_into_config(self.config_store.data, data)

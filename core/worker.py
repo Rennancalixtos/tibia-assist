@@ -73,6 +73,17 @@ class BaseWorker(threading.Thread):
             time.sleep(min(0.05, deadline - time.monotonic()))
         return not self.stopped
 
+    def sleep_confirming_pauses(self, seconds: float) -> bool:
+        remaining = max(0.0, float(seconds))
+        while remaining > 0:
+            if not self.wait_for_higher_priority():
+                return False
+            chunk = min(1.0, remaining)
+            if not self.sleep(chunk):
+                return False
+            remaining -= chunk
+        return True
+
     def wait_while_paused(self) -> bool:
         while not self._resume_event.wait(timeout=0.1):
             if self.stopped:

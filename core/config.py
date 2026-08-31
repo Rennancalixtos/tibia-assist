@@ -82,6 +82,7 @@ DEFAULTS: dict[str, Any] = {
     "log": {
         "overlay_enabled": True,
         "panel_enabled": False,
+        "region_overlays_enabled": True,
         "chat_region": None,
     },
     "runemaker": {
