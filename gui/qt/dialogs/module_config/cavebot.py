@@ -134,6 +134,7 @@ class CavebotModuleView:
 
         self.minimap_overlay = ManaOverlay(main_window)
         self.minimap_overlay.configure_region(self.cfg.get("minimap_region"))
+        self._last_state = "stopped"
 
         self.config_dialog = _ConfigDialog(main_window)
         self.config_dialog.setWindowTitle("Configurar - Cavebot")
@@ -142,6 +143,7 @@ class CavebotModuleView:
 
         controller.register_module_view("cavebot", self)
         controller.module_event.connect(self._on_module_event)
+        controller.region_overlays_toggled.connect(self._apply_overlay_visibility)
 
     def _build_config_dialog(self) -> None:
         outer = QVBoxLayout(self.config_dialog)
@@ -398,12 +400,16 @@ class CavebotModuleView:
     def close_overlays(self) -> None:
         self.minimap_overlay.hide()
 
-    def on_state(self, state: str) -> None:
-        self.card.set_state(state)
-        if state in ("running", "paused"):
+    def _apply_overlay_visibility(self) -> None:
+        if self._last_state in ("running", "paused") and self.controller.region_overlays_enabled:
             self.minimap_overlay.show()
         else:
             self.minimap_overlay.hide()
+
+    def on_state(self, state: str) -> None:
+        self.card.set_state(state)
+        self._last_state = state
+        self._apply_overlay_visibility()
 
     def on_counter(self, value) -> None:
         self.card.set_stat("counter", str(value))

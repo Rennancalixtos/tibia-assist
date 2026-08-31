@@ -56,6 +56,27 @@ def delete_profile(name: str) -> None:
         os.remove(path)
 
 
+def export_profile(name: str, dest_path: str) -> None:
+    data = load_profile(name)
+    with open(dest_path, "w", encoding="utf-8") as fp:
+        json.dump(data, fp, indent=2, ensure_ascii=False)
+
+
+def import_profile_file(src_path: str, name: str) -> str:
+    name = sanitize_profile_name(name)
+    if not name:
+        raise ValueError("Nome de perfil inválido.")
+    with open(src_path, "r", encoding="utf-8") as fp:
+        data = json.load(fp)
+    if not isinstance(data, dict):
+        raise ValueError("Arquivo não é um perfil de configuração válido.")
+    snapshot = {k: v for k, v in data.items() if k not in EXCLUDED_SECTIONS}
+    os.makedirs(PROFILES_DIR, exist_ok=True)
+    with open(profile_path(name), "w", encoding="utf-8") as fp:
+        json.dump(snapshot, fp, indent=2, ensure_ascii=False)
+    return name
+
+
 def merge_into_config(current_data: dict, profile_data: dict) -> dict:
     merged = _deep_merge(DEFAULTS, profile_data)
     if "license" in current_data:

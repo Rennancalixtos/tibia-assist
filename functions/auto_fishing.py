@@ -195,7 +195,7 @@ class AutoFishingWorker(BaseWorker):
             self.config.get("break_duration_min", 15), self.config.get("break_duration_max", 120)
         )
         self.log(f"Pausa para descanso: {duration:.0f}s.")
-        if not self.sleep(duration):
+        if not self.sleep_confirming_pauses(duration):
             return False
         self._schedule_next_break()
         return True

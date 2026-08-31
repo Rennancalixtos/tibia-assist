@@ -94,7 +94,7 @@ class AutoFoodWorker(BaseWorker):
                         "aguardando ela voltar pra checar a bolsa."
                     )
                     region_indisponivel_avisado = True
-                if not self.sleep(self.check_interval):
+                if not self.sleep_confirming_pauses(self.check_interval):
                     return
                 continue
             region_indisponivel_avisado = False
@@ -122,9 +122,6 @@ class AutoFoodWorker(BaseWorker):
                     clicked = True
                     break
 
-            if clicked:
-                if not self.sleep(self.eat_cooldown):
-                    return
-            else:
-                if not self.sleep(self.check_interval):
-                    return
+            wait_s = self.eat_cooldown if clicked else self.check_interval
+            if not self.sleep_confirming_pauses(wait_s):
+                return

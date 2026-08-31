@@ -61,6 +61,7 @@ class TrainingModuleView:
 
         self.battle_overlay = ManaOverlay(self.main_window)
         self.battle_overlay.configure_region(self.cfg.get("battle_list_region"))
+        self._last_state = "stopped"
 
         self.config_dialog = _ConfigDialog(main_window)
         self.config_dialog.setWindowTitle("Configurar - Training")
@@ -71,6 +72,7 @@ class TrainingModuleView:
 
         controller.register_module_view("training", self)
         controller.module_event.connect(self._on_module_event)
+        controller.region_overlays_toggled.connect(self._apply_overlay_visibility)
 
     def _build_config_dialog(self) -> None:
         outer = QVBoxLayout(self.config_dialog)
@@ -545,8 +547,12 @@ class TrainingModuleView:
 
     def on_state(self, state: str) -> None:
         self.card.set_state(state)
-        running = state in ("running", "paused")
-        if running and self.cfg.get("training_battle_empty_template"):
+        self._last_state = state
+        self._apply_overlay_visibility()
+
+    def _apply_overlay_visibility(self) -> None:
+        running = self._last_state in ("running", "paused")
+        if running and self.cfg.get("training_battle_empty_template") and self.controller.region_overlays_enabled:
             self.battle_overlay.show()
         else:
             self.battle_overlay.hide()

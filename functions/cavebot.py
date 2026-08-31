@@ -131,6 +131,10 @@ class CavebotWorker(BaseWorker):
 
         if not self.wait_for_higher_priority():
             return "stopped"
+        if not self.sleep(0.15):
+            return "stopped"
+        if not self.wait_for_higher_priority():
+            return "stopped"
         if not self.request_floor(timeout=5.0):
             return "floor_denied"
         try:

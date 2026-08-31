@@ -103,6 +103,21 @@ class DashboardPage(QWidget):
         self.log_panel_check.toggled.connect(self._on_log_panel_toggled)
         options_box.addWidget(self.log_panel_check)
 
+        region_overlays_row = QHBoxLayout()
+        self.region_overlays_check = QCheckBox("Mostrar marcações de região na tela do jogo")
+        self.region_overlays_check.setChecked(controller.region_overlays_enabled)
+        self.region_overlays_check.toggled.connect(controller.toggle_region_overlays)
+        region_overlays_row.addWidget(self.region_overlays_check)
+        region_overlays_row.addWidget(
+            InfoIcon(
+                "Liga/desliga de uma vez todos os retângulos verdes desenhados na tela do jogo marcando "
+                "regiões calibradas (mini mapa, Battle List, bag do corpo, SQMs do AutoLoot, etc). Não "
+                "afeta o balão de log (isso é o checkbox 'Logs na tela do jogo' acima)."
+            )
+        )
+        region_overlays_row.addStretch(1)
+        options_box.addLayout(region_overlays_row)
+
         layout.addLayout(options_box)
 
         self.shared_log = LogPanel(title="Log", max_lines=500)
